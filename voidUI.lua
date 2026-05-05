@@ -361,14 +361,7 @@ function VoidUI:CreateWindow(cfg)
         sg.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
     end
 
-    -- ── Ombre portée (simulée avec un frame légèrement plus grand derrière) ──
-    local shadow = MakeFrame(sg,
-        UDim2.new(0, size.X.Offset + 26, 0, size.Y.Offset + 26),
-        UDim2.new(0.5, -(size.X.Offset + 26)/2, 0.5, -(size.Y.Offset + 26)/2),
-        C.Black, 0.42
-    )
-    shadow.ZIndex = 0
-    Corner(14, shadow)
+    -- (shadow supprimée car elle ne suivait pas la fenêtre au drag)
 
     -- ── Fenêtre principale ──
     local main = MakeFrame(sg,
@@ -376,7 +369,11 @@ function VoidUI:CreateWindow(cfg)
         UDim2.new(0.5, -size.X.Offset/2, 0.5, -size.Y.Offset/2),
         C.BgDeep, 0
     )
-    main.ClipsDescendants = true
+    main.ClipsDescendants = false
+    -- Shadow DANS main pour suivre le drag
+    local shadow = MakeFrame(main, UDim2.new(1,22,1,22), UDim2.new(0,-11,0,-11), C.Black, 0.45)
+    shadow.ZIndex = -1
+    Corner(14, shadow)
     Corner(12, main)
     Stroke(1, C.BorderDim, main)
 
