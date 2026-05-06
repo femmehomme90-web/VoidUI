@@ -76,7 +76,7 @@ local C = {
 
     -- Bordures
     BorderDim   = Color3.fromRGB(35,  32,  58),    -- bordure normale
-    BorderGlow  = Color3.fromRGB(130, 80,  255),   -- bordure active/sélectionnée
+    -- BorderGlow = C.Accent (alias inutile, on utilise C.Accent directement)
 
     -- États
     Success     = Color3.fromRGB(55,  210, 120),
@@ -346,8 +346,10 @@ end
 -- ════════════════════════════════════════════════════════════════════════════
 function VoidUI:CreateWindow(cfg)
     cfg = cfg or {}
-    local title = cfg.Title or "VoidUI"
-    local size  = cfg.Size  or UDim2.new(0, 580, 0, 440)
+    local title       = cfg.Title       or "VoidUI"
+    local size        = cfg.Size        or UDim2.new(0, 580, 0, 440)
+    local tabPosition = cfg.TabPosition or "top"   -- "top" ou "side"
+    local pillIcon    = cfg.Icon        or ""       -- rbxassetid://... pour la pill
 
     -- ScreenGui
     local sg = Instance.new("ScreenGui")
@@ -370,12 +372,9 @@ function VoidUI:CreateWindow(cfg)
         C.BgDeep, 0
     )
     main.ClipsDescendants = false
-    -- Shadow DANS main pour suivre le drag
-    local shadow = MakeFrame(main, UDim2.new(1,22,1,22), UDim2.new(0,-11,0,-11), C.Black, 0.45)
-    shadow.ZIndex = -1
-    Corner(14, shadow)
+    -- Contour lumineux qui remplace l'ombre
     Corner(12, main)
-    Stroke(1, C.BorderDim, main)
+    Stroke(1.5, C.Accent, main)
 
     -- Ligne gradient décorative tout en haut (violet → rose, 2px)
     local topLine = MakeFrame(main,
@@ -464,45 +463,99 @@ function VoidUI:CreateWindow(cfg)
     MakeDraggable(titleBar, main)
 
     -- ── Pill (fenêtre réduite / minimisée) ──
+    -- Si une icône est fournie (pillIcon), on affiche une pill carrée avec l'image
+    -- Sinon on affiche la pill texte classique
+    local pillHasIcon = pillIcon ~= ""
+    local pillW       = pillHasIcon and 52 or 145
+    local pillH       = pillHasIcon and 52 or 36
+
     local pill = Instance.new("TextButton")
-    pill.Size             = UDim2.new(0, 145, 0, 36)
-    pill.Position         = UDim2.new(0, 16, 1, -54)
+    pill.Size             = UDim2.new(0, pillW, 0, pillH)
+    pill.Position         = UDim2.new(0, 16, 1, -(pillH + 18))
     pill.BackgroundColor3 = C.BgMid
     pill.BorderSizePixel  = 0
     pill.Text             = ""
     pill.Visible          = false
     pill.ZIndex           = 100
     pill.Parent           = sg
-    Corner(18, pill)
+    Corner(pillHasIcon and 16 or 18, pill)
     Stroke(1, C.Accent, pill)
 
-    -- Point pulsant dans la pill
-    local pillDot = MakeFrame(pill,
-        UDim2.new(0, 7, 0, 7),
-        UDim2.new(0, 11, 0.5, -3),
-        C.Accent, 0
-    )
-    pillDot.ZIndex = 101
-    Corner(4, pillDot)
+    if pillHasIcon then
+        -- Mode icône : image centrée dans la pill carrée
+        local pillImg = Instance.new("ImageLabel")
+        pillImg.Size                   = UDim2.new(0, 34, 0, 34)
+        pillImg.Position               = UDim2.new(0.5, -17, 0.5, -17)
+        pillImg.BackgroundTransparency = 1
+        pillImg.Image                  = pillIcon
+        pillImg.ScaleType              = Enum.ScaleType.Fit
+        pillImg.ZIndex                 = 101
+        pillImg.Parent                 = pill
 
-    -- Titre dans la pill
-    local pillLabel = MakeLabel(pill, title,
-        UDim2.new(1, -44, 1, 0),
-        UDim2.new(0, 25, 0, 0),
-        C.TextBright, 12, Enum.Font.GothamBold
-    )
-    pillLabel.ZIndex = 101
+        -- Petit point pulsant en bas à droite de la pill icône
+        local pillDot = MakeFrame(pill,
+            UDim2.new(0, 10, 0, 10),
+            UDim2.new(1, -12, 1, -12),
+            C.Accent, 0
+        )
+        pillDot.ZIndex = 102
+        Corner(5, pillDot)
+        Stroke(1.5, C.BgMid, pillDot)
 
-    -- Icône expand (↗)
-    local pillArrow = MakeLabel(pill, "↗",
-        UDim2.new(0, 20, 1, 0),
-        UDim2.new(1, -24, 0, 0),
-        C.Accent, 13, Enum.Font.GothamBold,
-        Enum.TextXAlignment.Center
-    )
-    pillArrow.ZIndex = 101
+        -- Animation pulsante
+        coroutine.wrap(function()
+            while true do
+                if pill.Visible then
+                    Tween(pillDot, { BackgroundTransparency = 0.1 }, 0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+                    task.wait(0.8)
+                    Tween(pillDot, { BackgroundTransparency = 0.8 }, 0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+                    task.wait(0.8)
+                else
+                    task.wait(0.3)
+                end
+            end
+        end)()
+    else
+        -- Mode texte classique : point + titre + flèche
+        local pillDot = MakeFrame(pill,
+            UDim2.new(0, 7, 0, 7),
+            UDim2.new(0, 11, 0.5, -3),
+            C.Accent, 0
+        )
+        pillDot.ZIndex = 101
+        Corner(4, pillDot)
 
-    -- La pill est aussi draggable
+        local pillLabel = MakeLabel(pill, title,
+            UDim2.new(1, -44, 1, 0),
+            UDim2.new(0, 25, 0, 0),
+            C.TextBright, 12, Enum.Font.GothamBold
+        )
+        pillLabel.ZIndex = 101
+
+        local pillArrow = MakeLabel(pill, "↗",
+            UDim2.new(0, 20, 1, 0),
+            UDim2.new(1, -24, 0, 0),
+            C.Accent, 13, Enum.Font.GothamBold,
+            Enum.TextXAlignment.Center
+        )
+        pillArrow.ZIndex = 101
+
+        -- Animation pulsante du point
+        coroutine.wrap(function()
+            while true do
+                if pill.Visible then
+                    Tween(pillDot, { BackgroundTransparency = 0.1 }, 0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+                    task.wait(0.8)
+                    Tween(pillDot, { BackgroundTransparency = 0.8 }, 0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+                    task.wait(0.8)
+                else
+                    task.wait(0.3)
+                end
+            end
+        end)()
+    end
+
+    -- La pill est draggable
     MakeDraggable(pill, pill)
 
     -- Hover sur la pill
@@ -512,20 +565,6 @@ function VoidUI:CreateWindow(cfg)
     pill.MouseLeave:Connect(function()
         Tween(pill, { BackgroundColor3 = C.BgMid }, 0.1)
     end)
-
-    -- Animation pulsante du point dans la pill (quand visible)
-    coroutine.wrap(function()
-        while true do
-            if pill.Visible then
-                Tween(pillDot, { BackgroundTransparency = 0.1 }, 0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
-                task.wait(0.8)
-                Tween(pillDot, { BackgroundTransparency = 0.8 }, 0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
-                task.wait(0.8)
-            else
-                task.wait(0.3)
-            end
-        end
-    end)()
 
     -- État minimisation
     local minimized = false
@@ -549,8 +588,8 @@ function VoidUI:CreateWindow(cfg)
 
         -- Pill apparaît avec animation
         pill.Visible = true
-        pill.Size    = UDim2.new(0, 0, 0, 36)
-        Tween(pill, { Size = UDim2.new(0, 145, 0, 36) }, 0.28, Enum.EasingStyle.Back)
+        pill.Size    = UDim2.new(0, 0, 0, pillH)
+        Tween(pill, { Size = UDim2.new(0, pillW, 0, pillH) }, 0.28, Enum.EasingStyle.Back)
     end)
 
     -- Restaurer : pill -> fenêtre
@@ -558,10 +597,10 @@ function VoidUI:CreateWindow(cfg)
         if not minimized then return end
         minimized = false
 
-        Tween(pill, { Size = UDim2.new(0, 0, 0, 36) }, 0.15, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+        Tween(pill, { Size = UDim2.new(0, 0, 0, pillH) }, 0.15, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
         task.wait(0.18)
         pill.Visible = false
-        pill.Size    = UDim2.new(0, 145, 0, 36)
+        pill.Size    = UDim2.new(0, pillW, 0, pillH)
 
         main.Visible = true
         main.Size    = UDim2.new(0, size.X.Offset, 0, 0)
@@ -569,34 +608,74 @@ function VoidUI:CreateWindow(cfg)
         Tween(main, { Size = size }, 0.3, Enum.EasingStyle.Back)
     end)
 
-    -- ── Barre des onglets ──
-    local tabBar = MakeFrame(main,
-        UDim2.new(1, 0, 0, 34),
-        UDim2.new(0, 0, 0, 43),
-        C.BgDeep, 0
-    )
+    -- ── Barre des onglets + Zone de contenu ──
+    -- Deux modes : "top" (onglets horizontaux en haut) ou "side" (onglets verticaux à gauche)
+    local tabBar, contentArea, tabLayout
 
-    local tabLayout = Instance.new("UIListLayout")
-    tabLayout.FillDirection = Enum.FillDirection.Horizontal
-    tabLayout.SortOrder     = Enum.SortOrder.LayoutOrder
-    tabLayout.Padding       = UDim.new(0, 2)
-    tabLayout.Parent        = tabBar
-    Pad(4, 4, 8, 8, tabBar)
+    if tabPosition == "top" then
+        -- ── MODE TOP : tab bar horizontale sous le titre ──
+        tabBar = MakeFrame(main,
+            UDim2.new(1, 0, 0, 34),
+            UDim2.new(0, 0, 0, 43),
+            C.BgDeep, 0
+        )
 
-    -- Séparateur sous la tab bar
-    local tabSep = MakeFrame(main,
-        UDim2.new(1, 0, 0, 1),
-        UDim2.new(0, 0, 0, 77),
-        C.BorderDim, 0
-    )
+        tabLayout = Instance.new("UIListLayout")
+        tabLayout.FillDirection = Enum.FillDirection.Horizontal
+        tabLayout.SortOrder     = Enum.SortOrder.LayoutOrder
+        tabLayout.Padding       = UDim.new(0, 2)
+        tabLayout.Parent        = tabBar
+        Pad(4, 4, 8, 8, tabBar)
 
-    -- ── Zone de contenu (scrolling par onglet) ──
-    local contentArea = MakeFrame(main,
-        UDim2.new(1, 0, 1, -79),
-        UDim2.new(0, 0, 0, 79),
-        C.BgDeep, 0
-    )
-    contentArea.ClipsDescendants = true
+        -- Séparateur sous la tab bar
+        local tabSep = MakeFrame(main,
+            UDim2.new(1, 0, 0, 1),
+            UDim2.new(0, 0, 0, 77),
+            C.BorderDim, 0
+        )
+        Gradient(C.Accent, C.AccentPink, tabSep, 0)
+
+        -- Contenu prend toute la largeur sous la tab bar
+        contentArea = MakeFrame(main,
+            UDim2.new(1, 0, 1, -79),
+            UDim2.new(0, 0, 0, 79),
+            C.BgDeep, 0
+        )
+        contentArea.ClipsDescendants = true
+
+    else
+        -- ── MODE SIDE : tab bar verticale à gauche ──
+        local sideWidth = 110  -- largeur de la colonne de gauche
+
+        tabBar = MakeFrame(main,
+            UDim2.new(0, sideWidth, 1, -44),
+            UDim2.new(0, 0, 0, 44),
+            C.BgMid, 0
+        )
+
+        tabLayout = Instance.new("UIListLayout")
+        tabLayout.FillDirection = Enum.FillDirection.Vertical
+        tabLayout.SortOrder     = Enum.SortOrder.LayoutOrder
+        tabLayout.Padding       = UDim.new(0, 3)
+        tabLayout.Parent        = tabBar
+        Pad(8, 8, 6, 6, tabBar)
+
+        -- Séparateur vertical entre la sidebar et le contenu
+        local sideSep = MakeFrame(main,
+            UDim2.new(0, 1, 1, -44),
+            UDim2.new(0, sideWidth, 0, 44),
+            C.White, 0
+        )
+        Gradient(C.Accent, C.AccentPink, sideSep, 90)
+
+        -- Contenu à droite de la sidebar
+        contentArea = MakeFrame(main,
+            UDim2.new(1, -sideWidth - 1, 1, -44),
+            UDim2.new(0, sideWidth + 1, 0, 44),
+            C.BgDeep, 0
+        )
+        contentArea.ClipsDescendants = true
+    end
 
     -- Animation d'ouverture de la fenêtre
     main.Size = UDim2.new(0, size.X.Offset, 0, 0)
@@ -622,7 +701,15 @@ function VoidUI:CreateWindow(cfg)
                 Tween(btn, { BackgroundColor3 = C.BgLight }, 0.15)
                 btn.TextColor3 = C.TextBright
                 local uline = btn:FindFirstChild("Uline")
-                if uline then Tween(uline, { BackgroundColor3 = C.Accent }, 0.15) end
+                if uline then
+                    if tabPosition == "side" then
+                        -- Mode side : barre gauche avec gradient
+                        Gradient(C.Accent, C.AccentPink, uline, 90)
+                        Tween(uline, { BackgroundColor3 = C.Accent }, 0.15)
+                    else
+                        Tween(uline, { BackgroundColor3 = C.Accent }, 0.15)
+                    end
+                end
             else
                 Tween(btn, { BackgroundColor3 = C.BgDeep }, 0.15)
                 btn.TextColor3 = C.TextDim
@@ -635,9 +722,8 @@ function VoidUI:CreateWindow(cfg)
 
     -- ── AJOUTER UN ONGLET ──
     function Window:AddTab(name)
-        -- Bouton de l'onglet
+        -- Bouton de l'onglet — taille et style différents selon top/side
         local tabBtn = Instance.new("TextButton")
-        tabBtn.Size             = UDim2.new(0, 88, 1, 0)
         tabBtn.BackgroundColor3 = C.BgDeep
         tabBtn.BorderSizePixel  = 0
         tabBtn.Text             = name
@@ -646,16 +732,36 @@ function VoidUI:CreateWindow(cfg)
         tabBtn.Font             = Enum.Font.GothamBold
         tabBtn.LayoutOrder      = #Window._tabs + 1
         tabBtn.Parent           = tabBar
-        Corner(6, tabBtn)
 
-        -- Soulignement qui s'allume quand actif
-        local uline = MakeFrame(tabBtn,
-            UDim2.new(0.65, 0, 0, 2),
-            UDim2.new(0.175, 0, 1, -2),
-            C.BgDeep, 0
-        )
-        uline.Name = "Uline"
-        Corner(2, uline)
+        if tabPosition == "top" then
+            -- Bouton horizontal compact
+            tabBtn.Size = UDim2.new(0, 88, 1, 0)
+            Corner(6, tabBtn)
+
+            -- Soulignement bas qui s'allume quand actif
+            local uline = MakeFrame(tabBtn,
+                UDim2.new(0.65, 0, 0, 2),
+                UDim2.new(0.175, 0, 1, -2),
+                C.BgDeep, 0
+            )
+            uline.Name = "Uline"
+            Corner(2, uline)
+        else
+            -- Bouton vertical pleine largeur
+            tabBtn.Size             = UDim2.new(1, 0, 0, 32)
+            tabBtn.TextXAlignment   = Enum.TextXAlignment.Left
+            Corner(7, tabBtn)
+            Pad(0, 0, 10, 0, tabBtn)
+
+            -- Barre gauche qui s'allume quand actif (remplace le soulignement)
+            local uline = MakeFrame(tabBtn,
+                UDim2.new(0, 2, 0.5, 0),
+                UDim2.new(0, 0, 0.25, 0),
+                C.BgDeep, 0
+            )
+            uline.Name = "Uline"
+            Corner(2, uline)
+        end
 
         -- Hover sur le bouton d'onglet
         tabBtn.MouseEnter:Connect(function()
@@ -681,6 +787,7 @@ function VoidUI:CreateWindow(cfg)
         scrollFrame.ScrollBarImageColor3 = C.Accent
         scrollFrame.CanvasSize           = UDim2.new(0, 0, 0, 0)
         scrollFrame.Visible              = false
+        scrollFrame.ClipsDescendants     = false  -- permet aux dropdowns de dépasser
         scrollFrame.Parent               = contentArea
 
         -- Layout vertical avec espacement entre les éléments
@@ -1007,19 +1114,16 @@ function VoidUI:CreateWindow(cfg)
             local options  = cfg.Options or {}
             local selected = options[1] or "None"
             local open     = false
+            local dropH    = #options * 28 + 6
             local it       = MakeItem(34)
 
-            -- Wrapper sans clipping pour que la liste dépasse
-            local wrap = MakeFrame(it, UDim2.new(1, 0, 0, 34), nil, C.Black, 1)
-            wrap.ClipsDescendants = false
-            wrap.Parent = it
-
+            -- Bouton principal du dropdown
             local btn = Instance.new("TextButton")
-            btn.Size             = UDim2.new(1, 0, 0, 34)
+            btn.Size             = UDim2.new(1, 0, 1, 0)
             btn.BackgroundColor3 = C.BgLight
             btn.BorderSizePixel  = 0
             btn.Text             = ""
-            btn.Parent           = wrap
+            btn.Parent           = it
             Corner(8, btn)
             Stroke(1, C.BorderDim, btn)
             MakeAccentBar(btn)
@@ -1044,14 +1148,16 @@ function VoidUI:CreateWindow(cfg)
                 Enum.TextXAlignment.Center
             )
 
-            -- Liste déroulante
-            local dropList = MakeFrame(wrap,
-                UDim2.new(1, 0, 0, #options * 28),
-                UDim2.new(0, 0, 0, 36),
+            -- La liste est enfant du scrollFrame directement (pas de it)
+            -- pour éviter le clipping — elle se positionne via AbsolutePosition
+            local dropList = MakeFrame(scrollFrame,
+                UDim2.new(0, 0, 0, dropH),
+                UDim2.new(0, 0, 0, 0),
                 C.BgMid, 0
             )
-            dropList.Visible = false
-            dropList.ZIndex  = 20
+            dropList.Visible        = false
+            dropList.ZIndex         = 50
+            dropList.ClipsDescendants = false
             Corner(8, dropList)
             Stroke(1, C.Accent, dropList)
 
@@ -1059,18 +1165,31 @@ function VoidUI:CreateWindow(cfg)
             dropLayout.SortOrder = Enum.SortOrder.LayoutOrder
             dropLayout.Parent    = dropList
 
+            -- Repositionne la dropList sous le bouton via AbsolutePosition
+            local function UpdateDropPosition()
+                local absPos  = btn.AbsolutePosition
+                local absSize = btn.AbsoluteSize
+                local sfPos   = scrollFrame.AbsolutePosition
+                dropList.Size     = UDim2.new(0, absSize.X, 0, dropH)
+                dropList.Position = UDim2.new(0,
+                    absPos.X - sfPos.X,
+                    0,
+                    absPos.Y - sfPos.Y + absSize.Y + 2
+                )
+            end
+
             for i, opt in ipairs(options) do
                 local optBtn = Instance.new("TextButton")
-                optBtn.Size                 = UDim2.new(1, 0, 0, 28)
+                optBtn.Size                   = UDim2.new(1, 0, 0, 28)
                 optBtn.BackgroundTransparency = 1
-                optBtn.BorderSizePixel      = 0
-                optBtn.Text                 = opt
-                optBtn.TextColor3           = C.TextMid
-                optBtn.TextSize             = 12
-                optBtn.Font                 = Enum.Font.Gotham
-                optBtn.ZIndex               = 21
-                optBtn.LayoutOrder          = i
-                optBtn.Parent               = dropList
+                optBtn.BorderSizePixel        = 0
+                optBtn.Text                   = opt
+                optBtn.TextColor3             = C.TextMid
+                optBtn.TextSize               = 12
+                optBtn.Font                   = Enum.Font.Gotham
+                optBtn.ZIndex                 = 51
+                optBtn.LayoutOrder            = i
+                optBtn.Parent                 = dropList
 
                 optBtn.MouseEnter:Connect(function()
                     Tween(optBtn, { TextColor3 = C.TextBright }, 0.1)
@@ -1087,21 +1206,100 @@ function VoidUI:CreateWindow(cfg)
                     open             = false
                     dropList.Visible = false
                     arrow.Text       = "▾"
-                    it.Size          = UDim2.new(1, 0, 0, 34)
-                    RefreshCanvas()
                     if cfg.Callback then cfg.Callback(opt) end
                 end)
             end
 
             btn.MouseButton1Click:Connect(function()
-                open             = not open
-                dropList.Visible = open
-                arrow.Text       = open and "▴" or "▾"
-                it.Size = open
-                    and UDim2.new(1, 0, 0, 34 + #options * 28 + 6)
-                    or  UDim2.new(1, 0, 0, 34)
-                RefreshCanvas()
+                open = not open
+                if open then
+                    UpdateDropPosition()
+                    dropList.Visible = true
+                    arrow.Text = "▴"
+                else
+                    dropList.Visible = false
+                    arrow.Text = "▾"
+                end
             end)
+
+            -- Fermeture automatique si clic en dehors du dropdown
+            UserInputService.InputBegan:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1 and open then
+                    -- Vérifie si le clic est en dehors du bouton et de la liste
+                    local mousePos = UserInputService:GetMouseLocation()
+                    local btnPos   = btn.AbsolutePosition
+                    local btnSize  = btn.AbsoluteSize
+                    local dropPos  = dropList.AbsolutePosition
+                    local dropSize = dropList.AbsoluteSize
+
+                    local inBtn = mousePos.X >= btnPos.X and mousePos.X <= btnPos.X + btnSize.X
+                        and mousePos.Y >= btnPos.Y and mousePos.Y <= btnPos.Y + btnSize.Y
+
+                    local inDrop = mousePos.X >= dropPos.X and mousePos.X <= dropPos.X + dropSize.X
+                        and mousePos.Y >= dropPos.Y and mousePos.Y <= dropPos.Y + dropSize.Y
+
+                    if not inBtn and not inDrop then
+                        open             = false
+                        dropList.Visible = false
+                        arrow.Text       = "▾"
+                    end
+                end
+            end)
+
+            -- Fonction pour reconstruire la liste avec de nouvelles options
+            local function RebuildOptions(newOptions)
+                -- Supprime les anciens boutons
+                for _, child in ipairs(dropList:GetChildren()) do
+                    if child:IsA("TextButton") then child:Destroy() end
+                end
+
+                -- Reconstruit avec les nouvelles options
+                for i, opt in ipairs(newOptions) do
+                    local optBtn = Instance.new("TextButton")
+                    optBtn.Size                   = UDim2.new(1, 0, 0, 28)
+                    optBtn.BackgroundTransparency = 1
+                    optBtn.BorderSizePixel        = 0
+                    optBtn.Text                   = opt
+                    optBtn.TextColor3             = C.TextMid
+                    optBtn.TextSize               = 12
+                    optBtn.Font                   = Enum.Font.Gotham
+                    optBtn.ZIndex                 = 51
+                    optBtn.LayoutOrder            = i
+                    optBtn.Parent                 = dropList
+
+                    optBtn.MouseEnter:Connect(function()
+                        Tween(optBtn, { TextColor3 = C.TextBright }, 0.1)
+                        optBtn.BackgroundColor3       = C.BgLight
+                        optBtn.BackgroundTransparency = 0
+                    end)
+                    optBtn.MouseLeave:Connect(function()
+                        Tween(optBtn, { TextColor3 = C.TextMid }, 0.1)
+                        optBtn.BackgroundTransparency = 1
+                    end)
+                    optBtn.MouseButton1Click:Connect(function()
+                        selected         = opt
+                        selLabel.Text    = opt
+                        open             = false
+                        dropList.Visible = false
+                        arrow.Text       = "▾"
+                        if cfg.Callback then cfg.Callback(opt) end
+                    end)
+                end
+
+                -- Redimensionne la dropList
+                local newH = #newOptions * 28 + 6
+                dropList.Size = UDim2.new(0, btn.AbsoluteSize.X, 0, newH)
+
+                -- Met à jour la sélection si l'option actuelle n'existe plus
+                local found = false
+                for _, opt in ipairs(newOptions) do
+                    if opt == selected then found = true break end
+                end
+                if not found and #newOptions > 0 then
+                    selected      = newOptions[1]
+                    selLabel.Text = selected
+                end
+            end
 
             return {
                 SetValue = function(_, v)
@@ -1110,6 +1308,10 @@ function VoidUI:CreateWindow(cfg)
                     if cfg.Callback then cfg.Callback(v) end
                 end,
                 GetValue = function() return selected end,
+                -- Change les options dynamiquement après injection
+                SetOptions = function(_, newOptions)
+                    RebuildOptions(newOptions)
+                end,
             }
         end
 
@@ -1576,9 +1778,7 @@ function VoidUI:CreateWindow(cfg)
                     return selected
                 end,
                 -- Permet de forcer la sélection d'un item par code
-                SetSelected = function(_, name, value)
-                    -- À implémenter si nécessaire
-                end,
+                -- (non implémenté car nécessite une ref aux cards individuelles)
             }
         end
 
@@ -1659,10 +1859,418 @@ function VoidUI:CreateWindow(cfg)
             }
         end
 
+        -- ── CLEAR — vide tout le contenu de l'onglet ──────────────────────
+        --  Utile pour repeupler dynamiquement (ex: liste d'items qui change)
+        function Tab:Clear()
+            for _, child in ipairs(scrollFrame:GetChildren()) do
+                if child:IsA("Frame") or child:IsA("TextButton") then
+                    child:Destroy()
+                end
+            end
+            Tab._order = 0
+        end
+
         return Tab
     end -- AddTab
 
     return Window
 end -- CreateWindow
+
+
+-- ════════════════════════════════════════════════════════════════════════════
+--  BOUTON FLOTTANT DRAGGABLE
+--  Bouton indépendant de la fenêtre, toujours visible, draggable
+--  Peut afficher une icône (rbxassetid) ou du texte
+--
+--  cfg.Icon     = "rbxassetid://..."  (optionnel)
+--  cfg.Text     = "Farm"              (optionnel, utilisé si pas d'icône)
+--  cfg.Position = UDim2.new(...)      (position initiale)
+--  cfg.Size     = UDim2.new(0,52,0,52)(optionnel, défaut 52x52)
+--  cfg.Callback = function() end      (appelé au clic)
+-- ════════════════════════════════════════════════════════════════════════════
+function VoidUI:CreateFloatingButton(cfg)
+    cfg = cfg or {}
+    local icon     = cfg.Icon     or ""
+    local text     = cfg.Text     or ""
+    local pos      = cfg.Position or UDim2.new(0, 20, 0.5, 0)
+    local btnSize  = cfg.Size     or UDim2.new(0, 52, 0, 52)
+    local callback = cfg.Callback or function() end
+    local hasIcon  = icon ~= ""
+
+    -- ScreenGui dédié pour rester au-dessus de tout
+    local sg = Instance.new("ScreenGui")
+    sg.Name           = "VoidUI_FloatBtn_" .. (hasIcon and "img" or text)
+    sg.ResetOnSpawn   = false
+    sg.DisplayOrder   = 1000
+    sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    local ok = pcall(function() sg.Parent = game:GetService("CoreGui") end)
+    if not ok then sg.Parent = Players.LocalPlayer:WaitForChild("PlayerGui") end
+
+    -- Bouton principal
+    local btn = Instance.new("TextButton")
+    btn.Size             = btnSize
+    btn.Position         = pos
+    btn.BackgroundColor3 = C.BgMid
+    btn.BorderSizePixel  = 0
+    btn.Text             = ""
+    btn.ZIndex           = 10
+    btn.Parent           = sg
+    Corner(14, btn)
+
+    -- Contour noir épais (effet "sticker")
+    local outerStroke = Stroke(4, C.Black, btn)
+
+    -- Contour violet intérieur par-dessus
+    local innerStroke = Stroke(1.5, C.Accent, btn)
+
+    if hasIcon then
+        -- Mode image
+        local img = Instance.new("ImageLabel")
+        img.Size                   = UDim2.new(0.72, 0, 0.72, 0)
+        img.Position               = UDim2.new(0.14, 0, 0.14, 0)
+        img.BackgroundTransparency = 1
+        img.Image                  = icon
+        img.ScaleType              = Enum.ScaleType.Fit
+        img.ZIndex                 = 11
+        img.Parent                 = btn
+    else
+        -- Mode texte
+        local lbl = Instance.new("TextLabel")
+        lbl.Size                   = UDim2.new(1, -8, 1, -8)
+        lbl.Position               = UDim2.new(0, 4, 0, 4)
+        lbl.BackgroundTransparency = 1
+        lbl.Text                   = text
+        lbl.TextColor3             = C.TextBright
+        lbl.TextSize               = 12
+        lbl.Font                   = Enum.Font.GothamBold
+        lbl.TextWrapped            = true
+        lbl.ZIndex                 = 11
+        lbl.Parent                 = btn
+    end
+
+    -- Hover / press animations
+    btn.MouseEnter:Connect(function()
+        Tween(btn, { BackgroundColor3 = C.BgLight }, 0.12)
+        Tween(innerStroke, { Color = C.AccentGlow }, 0.12)
+    end)
+    btn.MouseLeave:Connect(function()
+        Tween(btn, { BackgroundColor3 = C.BgMid }, 0.12)
+        Tween(innerStroke, { Color = C.Accent }, 0.12)
+    end)
+    btn.MouseButton1Down:Connect(function()
+        Tween(btn, { BackgroundColor3 = C.AccentSoft }, 0.08)
+    end)
+    btn.MouseButton1Up:Connect(function()
+        Tween(btn, { BackgroundColor3 = C.BgMid }, 0.12)
+    end)
+
+    -- Drag + clic (on différencie drag et clic via distance parcourue)
+    local dragging  = false
+    local dragStart = nil
+    local startPos  = nil
+    local moved     = false
+
+    btn.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging  = true
+            moved     = false
+            dragStart = input.Position
+            startPos  = btn.Position
+        end
+    end)
+
+    btn.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+            -- Si pas de mouvement significatif => c'est un clic
+            if not moved then
+                callback()
+            end
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - dragStart
+            -- On considère que c'est un drag seulement si on bouge de +4px
+            if math.abs(delta.X) > 4 or math.abs(delta.Y) > 4 then
+                moved = true
+            end
+            if moved then
+                btn.Position = UDim2.new(
+                    startPos.X.Scale, startPos.X.Offset + delta.X,
+                    startPos.Y.Scale, startPos.Y.Offset + delta.Y
+                )
+            end
+        end
+    end)
+
+    -- Retourne un objet pour contrôler le bouton depuis le script
+    return {
+        -- Changer l'icône après injection
+        SetIcon = function(_, id)
+            local img = btn:FindFirstChildOfClass("ImageLabel")
+            if img then img.Image = id end
+        end,
+        -- Changer le texte après injection
+        SetText = function(_, v)
+            local lbl = btn:FindFirstChildOfClass("TextLabel")
+            if lbl then lbl.Text = v end
+        end,
+        -- Afficher / cacher
+        SetVisible = function(_, v) btn.Visible = v end,
+        -- Détruire
+        Destroy = function(_) sg:Destroy() end,
+    }
+end
+
+-- ════════════════════════════════════════════════════════════════════════════
+--  OVERLAY D'INFORMATIONS
+--  Widget flottant draggable affichant du texte et/ou des images
+--  Mise à jour en temps réel via SetText / SetImage
+--
+--  cfg.Position = UDim2.new(...)
+--  cfg.Items = {
+--      { Type = "image", Icon = "rbxassetid://...", Id = "myimg" },
+--      { Type = "text",  Text = "HP : 100",         Id = "hp"    },
+--      { Type = "separator" },
+--  }
+-- ════════════════════════════════════════════════════════════════════════════
+function VoidUI:CreateOverlay(cfg)
+    cfg = cfg or {}
+    local items    = cfg.Items    or {}
+    local pos      = cfg.Position or UDim2.new(0, 20, 0, 120)
+    local minWidth = cfg.Width    or 160
+
+    -- Calcule la hauteur totale selon les items
+    local totalH = 12  -- padding top+bottom
+    for _, item in ipairs(items) do
+        if item.Type == "text"      then totalH = totalH + 22
+        elseif item.Type == "image" then totalH = totalH + 50
+        elseif item.Type == "separator" then totalH = totalH + 10
+        end
+    end
+
+    -- ScreenGui dédié
+    local sg = Instance.new("ScreenGui")
+    sg.Name           = "VoidUI_Overlay"
+    sg.ResetOnSpawn   = false
+    sg.DisplayOrder   = 998
+    sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    local ok = pcall(function() sg.Parent = game:GetService("CoreGui") end)
+    if not ok then sg.Parent = Players.LocalPlayer:WaitForChild("PlayerGui") end
+
+    -- Conteneur principal
+    local container = MakeFrame(sg,
+        UDim2.new(0, minWidth, 0, totalH),
+        pos,
+        C.BgMid, 0
+    )
+    Corner(10, container)
+    -- Contour noir épais + contour violet (même style que floating button)
+    Stroke(4, C.Black, container)
+    Stroke(1.5, C.Accent, container)
+
+    -- Layout vertical automatique
+    local layout = Instance.new("UIListLayout")
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Padding   = UDim.new(0, 4)
+    layout.Parent    = container
+    Pad(6, 6, 8, 8, container)
+
+    -- Drag via le container entier
+    local dragging  = false
+    local dragStart = nil
+    local startPos  = nil
+
+    container.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging  = true
+            dragStart = input.Position
+            startPos  = container.Position
+        end
+    end)
+    container.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - dragStart
+            container.Position = UDim2.new(
+                startPos.X.Scale, startPos.X.Offset + delta.X,
+                startPos.Y.Scale, startPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+
+    -- Table pour retrouver les éléments par Id
+    local elements = {}
+    local order    = 0
+
+    for _, item in ipairs(items) do
+        order = order + 1
+
+        if item.Type == "text" then
+            -- Ligne de texte
+            local lbl = MakeLabel(container,
+                item.Text or "",
+                UDim2.new(1, 0, 0, 20),
+                nil,
+                item.Color or C.TextBright,
+                item.TextSize or 12,
+                item.Bold and Enum.Font.GothamBold or Enum.Font.Gotham
+            )
+            lbl.LayoutOrder = order
+            lbl.TextXAlignment = item.Align or Enum.TextXAlignment.Left
+
+            if item.Id then
+                elements[item.Id] = lbl
+            end
+
+        elseif item.Type == "image" then
+            -- Image statique
+            local img = Instance.new("ImageLabel")
+            img.Size                   = UDim2.new(1, 0, 0, item.Height or 44)
+            img.BackgroundTransparency = 1
+            img.Image                  = item.Icon or ""
+            img.ScaleType              = Enum.ScaleType.Fit
+            img.LayoutOrder            = order
+            img.Parent                 = container
+
+            if item.Id then
+                elements[item.Id] = img
+            end
+
+        elseif item.Type == "imagebutton" then
+            -- Bouton cliquable avec image (+ texte optionnel en dessous)
+            local btnH  = (item.Height or 44) + (item.Label and 20 or 0)
+            local ibWrap = MakeFrame(container,
+                UDim2.new(1, 0, 0, btnH),
+                nil, C.Black, 1
+            )
+            ibWrap.LayoutOrder = order
+
+            local ibBtn = Instance.new("TextButton")
+            ibBtn.Size             = UDim2.new(1, 0, 0, item.Height or 44)
+            ibBtn.BackgroundColor3 = C.BgLight
+            ibBtn.BorderSizePixel  = 0
+            ibBtn.Text             = ""
+            ibBtn.ZIndex           = 5
+            ibBtn.Parent           = ibWrap
+            Corner(8, ibBtn)
+            Stroke(1, C.BorderDim, ibBtn)
+
+            local ibImg = Instance.new("ImageLabel")
+            ibImg.Size                   = UDim2.new(0.7, 0, 0.8, 0)
+            ibImg.Position               = UDim2.new(0.15, 0, 0.1, 0)
+            ibImg.BackgroundTransparency = 1
+            ibImg.Image                  = item.Icon or ""
+            ibImg.ScaleType              = Enum.ScaleType.Fit
+            ibImg.ZIndex                 = 6
+            ibImg.Parent                 = ibBtn
+
+            -- Label optionnel sous l'image
+            if item.Label then
+                MakeLabel(ibWrap,
+                    item.Label,
+                    UDim2.new(1, 0, 0, 18),
+                    UDim2.new(0, 0, 0, item.Height or 44),
+                    item.Color or C.TextMid,
+                    10, Enum.Font.GothamBold,
+                    Enum.TextXAlignment.Center
+                )
+            end
+
+            -- Hover / press
+            ibBtn.MouseEnter:Connect(function()
+                Tween(ibBtn, { BackgroundColor3 = C.BgLighter }, 0.1)
+                Tween(ibImg, { ImageTransparency = 0.15 }, 0.1)
+            end)
+            ibBtn.MouseLeave:Connect(function()
+                Tween(ibBtn, { BackgroundColor3 = C.BgLight }, 0.1)
+                Tween(ibImg, { ImageTransparency = 0 }, 0.1)
+            end)
+            ibBtn.MouseButton1Down:Connect(function()
+                Tween(ibBtn, { BackgroundColor3 = C.AccentSoft }, 0.08)
+            end)
+            ibBtn.MouseButton1Up:Connect(function()
+                Tween(ibBtn, { BackgroundColor3 = C.BgLight }, 0.1)
+            end)
+            ibBtn.MouseButton1Click:Connect(function()
+                if item.Callback then item.Callback() end
+            end)
+
+            if item.Id then
+                -- On stocke ibBtn pour pouvoir changer l'icône / label via SetImage
+                elements[item.Id] = ibImg
+            end
+
+        elseif item.Type == "separator" then
+            -- Ligne de séparation
+            local sep = MakeFrame(container,
+                UDim2.new(1, 0, 0, 1),
+                nil, C.White, 0
+            )
+            sep.LayoutOrder = order
+            Gradient(C.Accent, C.AccentPink, sep, 0)
+        end
+    end
+
+    -- Redimensionne le container si le contenu change de taille
+    layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        container.Size = UDim2.new(0, minWidth, 0,
+            layout.AbsoluteContentSize.Y + 14
+        )
+    end)
+
+    -- Retourne un objet pour contrôler l'overlay depuis le script
+    return {
+        -- Met à jour un texte par son Id
+        SetText = function(_, id, value)
+            local el = elements[id]
+            if el and el:IsA("TextLabel") then
+                el.Text = tostring(value)
+            end
+        end,
+        -- Met à jour une image par son Id
+        SetImage = function(_, id, rbxassetid)
+            local el = elements[id]
+            if el and el:IsA("ImageLabel") then
+                el.Image = rbxassetid
+            end
+        end,
+        -- Change la couleur d'un texte par son Id
+        SetColor = function(_, id, color)
+            local el = elements[id]
+            if el and el:IsA("TextLabel") then
+                el.TextColor3 = color
+            end
+        end,
+        -- Afficher / cacher l'overlay
+        SetVisible = function(_, v) container.Visible = v end,
+        -- Détruire
+        Destroy = function(_) sg:Destroy() end,
+    }
+end
+
+-- ════════════════════════════════════════════════════════════════════════════
+--  QUALITÉ DE VIE — fonctions globales utilitaires
+-- ════════════════════════════════════════════════════════════════════════════
+
+-- Détruit toutes les UI VoidUI créées dans CoreGui et PlayerGui
+-- Utile pour re-injecter proprement sans résidus
+function VoidUI:DestroyAll()
+    local function cleanIn(parent)
+        for _, child in ipairs(parent:GetChildren()) do
+            if child:IsA("ScreenGui") and child.Name:sub(1, 7) == "VoidUI_" then
+                child:Destroy()
+            end
+        end
+    end
+    pcall(function() cleanIn(game:GetService("CoreGui")) end)
+    pcall(function() cleanIn(Players.LocalPlayer.PlayerGui) end)
+end
 
 return VoidUI
