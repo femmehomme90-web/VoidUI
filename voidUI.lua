@@ -882,13 +882,17 @@ function VoidUI:CreateWindow(cfg)
         end
 
         -- ── BOUTON ───────────────────────────────────────────────────────
+        --  cfg.Colors = { Color3, Color3 } active un fond dégradé personnalisé
+        --  Exemple : Colors = { Color3.fromRGB(130,80,255), Color3.fromRGB(220,80,160) }
         function Tab:AddButton(cfg)
             cfg = cfg or {}
-            local it = MakeItem(34)
+            local colors  = cfg.Colors  -- nil = style par défaut
+            local hasGrad = colors and #colors >= 2
+            local it      = MakeItem(34)
 
             local btn = Instance.new("TextButton")
             btn.Size             = UDim2.new(1, 0, 1, 0)
-            btn.BackgroundColor3 = C.BgLight
+            btn.BackgroundColor3 = hasGrad and colors[1] or C.BgLight
             btn.BorderSizePixel  = 0
             btn.Text             = cfg.Label or "Button"
             btn.TextColor3       = C.TextBright
@@ -896,42 +900,76 @@ function VoidUI:CreateWindow(cfg)
             btn.Font             = Enum.Font.GothamBold
             btn.Parent           = it
             Corner(8, btn)
-            Stroke(1, C.BorderDim, btn)
-            MakeAccentBar(btn)
 
-            -- Overlay gradient violet/rose très subtil
-            local grad = Instance.new("UIGradient")
-            grad.Color    = ColorSequence.new(C.Accent, C.AccentPink)
-            grad.Rotation = 0
-            grad.Transparency = NumberSequence.new({
-                NumberSequenceKeypoint.new(0, 0.87),
-                NumberSequenceKeypoint.new(1, 0.87),
-            })
-            grad.Parent = btn
+            if hasGrad then
+                -- ── Mode dégradé personnalisé ──
+                -- On remplace le stroke par un contour de la couleur dominante
+                Stroke(1, colors[1], btn)
 
-            local function SetGradAlpha(alpha)
+                -- Gradient plein entre les deux couleurs fournies
+                local grad = Instance.new("UIGradient")
+                grad.Color    = ColorSequence.new(colors[1], colors[2])
+                grad.Rotation = 0
+                grad.Parent   = btn
+
+                -- Petit fondu animé au hover : on fait tourner le gradient
+                -- et on éclaircit légèrement le fond
+                btn.MouseEnter:Connect(function()
+                    Tween(btn, { BackgroundColor3 = colors[2] }, 0.3)
+                    TweenService:Create(grad, TweenInfo.new(0.3, Enum.EasingStyle.Quint), { Rotation = 15 }):Play()
+                end)
+                btn.MouseLeave:Connect(function()
+                    Tween(btn, { BackgroundColor3 = colors[1] }, 0.3)
+                    TweenService:Create(grad, TweenInfo.new(0.3, Enum.EasingStyle.Quint), { Rotation = 0 }):Play()
+                end)
+                btn.MouseButton1Down:Connect(function()
+                    Tween(btn, { BackgroundColor3 = colors[1] }, 0.08)
+                    TweenService:Create(grad, TweenInfo.new(0.08), { Rotation = -10 }):Play()
+                end)
+                btn.MouseButton1Up:Connect(function()
+                    Tween(btn, { BackgroundColor3 = colors[1] }, 0.15)
+                    TweenService:Create(grad, TweenInfo.new(0.15), { Rotation = 0 }):Play()
+                end)
+            else
+                -- ── Mode par défaut (pas de Colors fourni) ──
+                Stroke(1, C.BorderDim, btn)
+                MakeAccentBar(btn)
+
+                -- Overlay gradient subtil violet/rose en fond
+                local grad = Instance.new("UIGradient")
+                grad.Color    = ColorSequence.new(C.Accent, C.AccentPink)
+                grad.Rotation = 0
                 grad.Transparency = NumberSequence.new({
-                    NumberSequenceKeypoint.new(0, alpha),
-                    NumberSequenceKeypoint.new(1, alpha),
+                    NumberSequenceKeypoint.new(0, 0.87),
+                    NumberSequenceKeypoint.new(1, 0.87),
                 })
+                grad.Parent = btn
+
+                local function SetGradAlpha(alpha)
+                    grad.Transparency = NumberSequence.new({
+                        NumberSequenceKeypoint.new(0, alpha),
+                        NumberSequenceKeypoint.new(1, alpha),
+                    })
+                end
+
+                btn.MouseEnter:Connect(function()
+                    Tween(btn, { BackgroundColor3 = C.AccentSoft }, 0.12)
+                    SetGradAlpha(0.65)
+                end)
+                btn.MouseLeave:Connect(function()
+                    Tween(btn, { BackgroundColor3 = C.BgLight }, 0.12)
+                    SetGradAlpha(0.87)
+                end)
+                btn.MouseButton1Down:Connect(function()
+                    Tween(btn, { BackgroundColor3 = C.Accent }, 0.08)
+                    SetGradAlpha(0.5)
+                end)
+                btn.MouseButton1Up:Connect(function()
+                    Tween(btn, { BackgroundColor3 = C.BgLight }, 0.12)
+                    SetGradAlpha(0.87)
+                end)
             end
 
-            btn.MouseEnter:Connect(function()
-                Tween(btn, { BackgroundColor3 = C.AccentSoft }, 0.12)
-                SetGradAlpha(0.65)
-            end)
-            btn.MouseLeave:Connect(function()
-                Tween(btn, { BackgroundColor3 = C.BgLight }, 0.12)
-                SetGradAlpha(0.87)
-            end)
-            btn.MouseButton1Down:Connect(function()
-                Tween(btn, { BackgroundColor3 = C.Accent }, 0.08)
-                SetGradAlpha(0.5)
-            end)
-            btn.MouseButton1Up:Connect(function()
-                Tween(btn, { BackgroundColor3 = C.BgLight }, 0.12)
-                SetGradAlpha(0.87)
-            end)
             btn.MouseButton1Click:Connect(function()
                 if cfg.Callback then cfg.Callback() end
             end)
