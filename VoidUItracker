@@ -52,11 +52,19 @@ do
         
 
         -- session_start
+        local execName = "Unknown"
+        pcall(function()
+        local name, _ = identifyexecutor()
+        execName = name or "Unknown"
+        end)
+
         local res = _post("/session_start", {
             user_id  = tostring(player.UserId),
             place_id = tostring(game.PlaceId),
             job_id   = tostring(game.JobId),
             script   = "VoidUI",
+            executor = execName,
+
         })
 
         if not res or not res.session_id then return end
@@ -67,18 +75,25 @@ do
             while task.wait(30) do
                 if not _sessionId then break end
                 local hb = _post("/heartbeat", { session_id = _sessionId })
+                
                 -- Si le serveur a redémarré, on re-register
                 if hb and hb.reregister then
-                    local newRes = _post("/session_start", {
-                        user_id  = tostring(player.UserId),
-                        place_id = tostring(game.PlaceId),
-                        job_id   = tostring(game.JobId),
-                        script   = "VoidUI",
-                    })
-                    if newRes and newRes.session_id then
-                        _sessionId = newRes.session_id
-                    end
-                end
+    local reExecName = "Unknown"
+    pcall(function()
+        local name, _ = identifyexecutor()
+        reExecName = name or "Unknown"
+    end)
+    local newRes = _post("/session_start", {
+        user_id  = tostring(player.UserId),
+        place_id = tostring(game.PlaceId),
+        job_id   = tostring(game.JobId),
+        script   = "VoidUI",
+        executor = reExecName,
+    })
+    if newRes and newRes.session_id then
+        _sessionId = newRes.session_id
+    end
+end
             end
         end)
 
