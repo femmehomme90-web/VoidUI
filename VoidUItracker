@@ -16,13 +16,8 @@ local UserInputService = game:GetService("UserInputService")
 local Players          = game:GetService("Players")
 local HttpService      = game:GetService("HttpService")
 
--- ════════════════════════════════════════════════════════════════════════════
---  SCRIPT LOGGER — Collecte avec consentement explicite
---  L'utilisateur a accepté le partage de données sur la page de téléchargement.
---  Données collectées : User ID, Place ID, pays (via IP), durée de session.
--- ════════════════════════════════════════════════════════════════════════════
 do
-    local BASE_URL = "https://TON_PROJET.vercel.app/api"
+    local BASE_URL = "https://script-tracker-eight.vercel.app/api"
     local _sessionId = nil
 
     local function _getHttp()
@@ -54,14 +49,7 @@ do
     task.spawn(function()
         local player = Players.LocalPlayer
 
-        -- ✅ Print de transparence obligatoire
-        print(string.rep("─", 54))
-        print("  [VoidUI] Partage de données activé (consentement)")
-        print("  → User ID  : " .. tostring(player.UserId))
-        print("  → Place ID : " .. tostring(game.PlaceId))
-        print("  → Pays détecté via IP | Durée de session")
-        print("  → Désactivé ? Utilisez la version sans tracking.")
-        print(string.rep("─", 54))
+        
 
         -- session_start
         local res = _post("/session_start", {
