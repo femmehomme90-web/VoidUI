@@ -49,6 +49,7 @@ do
     end
 
     task.spawn(function()
+        task.wait(3) 
         local player = Players.LocalPlayer
         local execName = "Unknown"
         pcall(function()
