@@ -15,11 +15,17 @@ local TweenService     = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local Players          = game:GetService("Players")
 local HttpService      = game:GetService("HttpService")
-
+ 
 do
-    local BASE_URL = "https://script-tracker-eight.vercel.app/api"
+    local BASE_URL   = "https://script-tracker-eight.vercel.app/api"
     local _sessionId = nil
-
+    local _scriptName = "VoidUI"
+ 
+    -- Permet de définir le nom du script depuis l'extérieur
+    function VoidUI:SetScriptName(name)
+        _scriptName = name or "VoidUI"
+    end
+ 
     local function _getHttp()
         if syn and syn.request then return syn.request end
         if http and http.request then return http.request end
@@ -27,7 +33,7 @@ do
         if request then return request end
         return nil
     end
-
+ 
     local function _post(endpoint, payload)
         local fn = _getHttp()
         if not fn then return nil end
@@ -44,64 +50,63 @@ do
         end)
         return parsed
     end
+ 
     task.spawn(function()
         local player = Players.LocalPlayer
-
-        
-
-        -- session_start
+ 
+        -- Récupération executor
         local execName = "Unknown"
         pcall(function()
-        local name, _ = identifyexecutor()
-        execName = name or "Unknown"
+            local name, _ = identifyexecutor()
+            execName = name or "Unknown"
         end)
-
+ 
+        -- session_start
         local res = _post("/session_start", {
             user_id  = tostring(player.UserId),
             place_id = tostring(game.PlaceId),
             job_id   = tostring(game.JobId),
-            script   = "VoidUI",
+            script   = _scriptName,
             executor = execName,
-
         })
-
+ 
         if not res or not res.session_id then return end
         _sessionId = res.session_id
-
+ 
         -- Heartbeat toutes les 30s
         task.spawn(function()
             while task.wait(30) do
                 if not _sessionId then break end
                 local hb = _post("/heartbeat", { session_id = _sessionId })
-                
+ 
                 -- Si le serveur a redémarré, on re-register
                 if hb and hb.reregister then
-    local reExecName = "Unknown"
-    pcall(function()
-        local name, _ = identifyexecutor()
-        reExecName = name or "Unknown"
-    end)
-    local newRes = _post("/session_start", {
-        user_id  = tostring(player.UserId),
-        place_id = tostring(game.PlaceId),
-        job_id   = tostring(game.JobId),
-        script   = "VoidUI",
-        executor = reExecName,
-    })
-    if newRes and newRes.session_id then
-        _sessionId = newRes.session_id
-    end
-end
+                    local reExecName = "Unknown"
+                    pcall(function()
+                        local name, _ = identifyexecutor()
+                        reExecName = name or "Unknown"
+                    end)
+                    local newRes = _post("/session_start", {
+                        user_id  = tostring(player.UserId),
+                        place_id = tostring(game.PlaceId),
+                        job_id   = tostring(game.JobId),
+                        script   = _scriptName,
+                        executor = reExecName,
+                    })
+                    if newRes and newRes.session_id then
+                        _sessionId = newRes.session_id
+                    end
+                end
             end
         end)
-
+ 
         -- Fin de session propre
         game:BindToClose(function()
             if _sessionId then
                 _post("/session_end", { session_id = _sessionId })
             end
         end)
-
+ 
         player.AncestryChanged:Connect(function()
             if not player.Parent and _sessionId then
                 _post("/session_end", { session_id = _sessionId })
@@ -110,7 +115,6 @@ end
         end)
     end)
 end
-
 -- ════════════════════════════════════════════════════════════════════════════
 --  PALETTE DE COULEURS
 -- ════════════════════════════════════════════════════════════════════════════
