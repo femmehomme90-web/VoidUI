@@ -15,17 +15,14 @@ local TweenService     = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local Players          = game:GetService("Players")
 local HttpService      = game:GetService("HttpService")
+
+local _scriptName = "VoidUI"
+local _sessionId  = nil
+
  
 do
-    local BASE_URL   = "https://script-tracker-eight.vercel.app/api"
-    local _sessionId = nil
-    local _scriptName = "VoidUI"
- 
-    -- Permet de définir le nom du script depuis l'extérieur
-    function VoidUI:SetScriptName(name)
-        _scriptName = name or "VoidUI"
-    end
- 
+    local BASE_URL = "https://script-tracker-eight.vercel.app/api"
+
     local function _getHttp()
         if syn and syn.request then return syn.request end
         if http and http.request then return http.request end
@@ -33,7 +30,7 @@ do
         if request then return request end
         return nil
     end
- 
+
     local function _post(endpoint, payload)
         local fn = _getHttp()
         if not fn then return nil end
@@ -50,18 +47,14 @@ do
         end)
         return parsed
     end
- 
+
     task.spawn(function()
         local player = Players.LocalPlayer
- 
-        -- Récupération executor
         local execName = "Unknown"
         pcall(function()
             local name, _ = identifyexecutor()
             execName = name or "Unknown"
         end)
- 
-        -- session_start
         local res = _post("/session_start", {
             user_id  = tostring(player.UserId),
             place_id = tostring(game.PlaceId),
@@ -69,17 +62,12 @@ do
             script   = _scriptName,
             executor = execName,
         })
- 
         if not res or not res.session_id then return end
         _sessionId = res.session_id
- 
-        -- Heartbeat toutes les 30s
         task.spawn(function()
             while task.wait(30) do
                 if not _sessionId then break end
                 local hb = _post("/heartbeat", { session_id = _sessionId })
- 
-                -- Si le serveur a redémarré, on re-register
                 if hb and hb.reregister then
                     local reExecName = "Unknown"
                     pcall(function()
@@ -99,14 +87,9 @@ do
                 end
             end
         end)
- 
-        -- Fin de session propre
         game:BindToClose(function()
-            if _sessionId then
-                _post("/session_end", { session_id = _sessionId })
-            end
+            if _sessionId then _post("/session_end", { session_id = _sessionId }) end
         end)
- 
         player.AncestryChanged:Connect(function()
             if not player.Parent and _sessionId then
                 _post("/session_end", { session_id = _sessionId })
@@ -255,6 +238,9 @@ end
 -- ════════════════════════════════════════════════════════════════════════════
 local VoidUI = {}
 VoidUI.__index = VoidUI
+function VoidUI:SetScriptName(name)
+    _scriptName = name or "VoidUI"
+end
 
 -- ════════════════════════════════════════════════════════════════════════════
 --  SYSTÈME DE NOTIFICATIONS
