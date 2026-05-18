@@ -6,6 +6,43 @@
 ║  Style  : Violet/Rose, glassmorphism, gradients, animations fluides          ║
 ║  Auteur : VoidUI                                                              ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
+
+USAGE :
+    local VoidUI = loadstring(game:HttpGet("VOTRE_URL_RAW"))()
+
+    local Win = VoidUI:CreateWindow({
+        Title = "Mon Script",
+        Size  = UDim2.new(0, 580, 0, 440),
+    })
+
+    local Tab = Win:AddTab("Main")
+
+    -- Grille de cards (pour les oeufs, items visuels)
+    Tab:AddCardGrid({
+        Items    = { { Name = "EpicEgg", Icon = "rbxassetid://123" } },
+        Columns  = 3,
+        Callback = function(selected) print(selected) end,
+    })
+
+    -- Composants classiques
+    Tab:AddToggle    ({ Label = "Auto Farm",  Default = false,            Callback = function(v) end })
+    Tab:AddSlider    ({ Label = "Speed",      Min = 0, Max = 100, Default = 16, Callback = function(v) end })
+    Tab:AddButton    ({ Label = "Teleport",   Callback = function() end })
+    Tab:AddDropdown  ({ Label = "Mode",       Options = {"Fast","Safe"},  Callback = function(v) end })
+    Tab:AddTextInput ({ Label = "Name",       Placeholder = "...",        Callback = function(v) end })
+    Tab:AddKeybind   ({ Label = "Toggle UI",  Default = Enum.KeyCode.F,   Callback = function(k) end })
+    Tab:AddColorPicker({ Label = "Couleur",   Default = Color3.new(1,0,1),Callback = function(c) end })
+    Tab:AddProgressBar({ Label = "XP",        Value = 50, Max = 100 })
+    Tab:AddMultiToggle({ Label = "Options",   Options = {"A","B","C"},    Callback = function(t) end })
+    Tab:AddLabel("Section : Misc")
+
+    -- Notifications (appelées depuis n'importe où)
+    VoidUI:Notify({
+        Title    = "Chargé !",
+        Message  = "Le script est actif.",
+        Type     = "success",   -- "info" | "success" | "warning" | "error"
+        Duration = 3,
+    })
 ]]
 
 -- ════════════════════════════════════════════════════════════════════════════
@@ -99,33 +136,50 @@ do
         end)
     end)
 end
+
+
 -- ════════════════════════════════════════════════════════════════════════════
 --  PALETTE DE COULEURS
+--  Violet chaud + rose, loin du bleu générique habituel
 -- ════════════════════════════════════════════════════════════════════════════
 local C = {
+    -- Fonds (du plus sombre au plus clair)
     BgDeep      = Color3.fromRGB(8,   8,  12),
     BgMid       = Color3.fromRGB(14,  14, 20),
     BgLight     = Color3.fromRGB(22,  22, 32),
     BgLighter   = Color3.fromRGB(30,  28, 45),
-    Accent      = Color3.fromRGB(130, 80,  255),
-    AccentSoft  = Color3.fromRGB(100, 60,  200),
-    AccentPink  = Color3.fromRGB(220, 80,  160),
-    AccentGlow  = Color3.fromRGB(160, 110, 255),
-    TextBright  = Color3.fromRGB(240, 238, 255),
-    TextMid     = Color3.fromRGB(160, 155, 190),
-    TextDim     = Color3.fromRGB(85,  82,  115),
-    BorderDim   = Color3.fromRGB(35,  32,  58),
+
+    -- Accents principaux
+    Accent      = Color3.fromRGB(130, 80,  255),   -- violet vif
+    AccentSoft  = Color3.fromRGB(100, 60,  200),   -- violet foncé (pressed)
+    AccentPink  = Color3.fromRGB(220, 80,  160),   -- rose (dégradé secondaire)
+    AccentGlow  = Color3.fromRGB(160, 110, 255),   -- violet clair (hover glow)
+
+    -- Textes
+    TextBright  = Color3.fromRGB(240, 238, 255),   -- blanc teinté violet
+    TextMid     = Color3.fromRGB(160, 155, 190),   -- gris violet
+    TextDim     = Color3.fromRGB(85,  82,  115),   -- très atténué
+
+    -- Bordures
+    BorderDim   = Color3.fromRGB(35,  32,  58),    -- bordure normale
+    -- BorderGlow = C.Accent (alias inutile, on utilise C.Accent directement)
+
+    -- États
     Success     = Color3.fromRGB(55,  210, 120),
     Warning     = Color3.fromRGB(255, 185, 40),
     Error       = Color3.fromRGB(230, 55,  75),
     Info        = Color3.fromRGB(60,  155, 255),
+
+    -- Utilitaires
     White       = Color3.fromRGB(255, 255, 255),
     Black       = Color3.fromRGB(0,   0,   0),
 }
 
 -- ════════════════════════════════════════════════════════════════════════════
---  HELPERS
+--  HELPERS — fonctions réutilisables pour créer les instances UI
 -- ════════════════════════════════════════════════════════════════════════════
+
+-- Tween simplifié avec valeurs par défaut sensées
 local function Tween(obj, props, duration, style, direction)
     duration  = duration  or 0.15
     style     = style     or Enum.EasingStyle.Quint
@@ -133,6 +187,7 @@ local function Tween(obj, props, duration, style, direction)
     TweenService:Create(obj, TweenInfo.new(duration, style, direction), props):Play()
 end
 
+-- UICorner rapide
 local function Corner(radius, parent)
     local c = Instance.new("UICorner")
     c.CornerRadius = UDim.new(0, radius or 6)
@@ -140,6 +195,7 @@ local function Corner(radius, parent)
     return c
 end
 
+-- UIStroke rapide
 local function Stroke(thickness, color, parent, transparency)
     local s = Instance.new("UIStroke")
     s.Thickness       = thickness    or 1
@@ -150,6 +206,7 @@ local function Stroke(thickness, color, parent, transparency)
     return s
 end
 
+-- UIPadding rapide
 local function Pad(top, bottom, left, right, parent)
     local p = Instance.new("UIPadding")
     p.PaddingTop    = UDim.new(0, top    or 0)
@@ -160,6 +217,7 @@ local function Pad(top, bottom, left, right, parent)
     return p
 end
 
+-- UIGradient horizontal ou vertical entre deux couleurs
 local function Gradient(color0, color1, parent, rotation)
     local g = Instance.new("UIGradient")
     g.Color    = ColorSequence.new(color0, color1)
@@ -168,6 +226,7 @@ local function Gradient(color0, color1, parent, rotation)
     return g
 end
 
+-- Frame basique
 local function MakeFrame(parent, size, position, bgColor, bgTransparency)
     local f = Instance.new("Frame")
     f.Size                   = size             or UDim2.new(1, 0, 1, 0)
@@ -179,6 +238,7 @@ local function MakeFrame(parent, size, position, bgColor, bgTransparency)
     return f
 end
 
+-- TextLabel basique
 local function MakeLabel(parent, text, size, position, textColor, textSize, font, xAlign)
     local l = Instance.new("TextLabel")
     l.Size                   = size      or UDim2.new(1, 0, 1, 0)
@@ -194,6 +254,7 @@ local function MakeLabel(parent, text, size, position, textColor, textSize, font
     return l
 end
 
+-- Rend un frame déplaçable en le saisissant via une poignée (handle)
 local function MakeDraggable(handle, frame)
     local dragging = false
     local dragStart, startPos
@@ -223,6 +284,8 @@ local function MakeDraggable(handle, frame)
     end)
 end
 
+-- Crée la petite barre déco gauche avec gradient violet->rose
+-- (présente sur presque tous les composants)
 local function MakeAccentBar(parent)
     local bar = MakeFrame(parent,
         UDim2.new(0, 3, 0.55, 0),
@@ -239,12 +302,14 @@ end
 -- ════════════════════════════════════════════════════════════════════════════
 local VoidUI = {}
 VoidUI.__index = VoidUI
-function VoidUI:SetScriptName(name)
+function VoidUI:SetScriptName(name)   -- ← ici
     _scriptName = name or "VoidUI"
 end
 
+
 -- ════════════════════════════════════════════════════════════════════════════
 --  SYSTÈME DE NOTIFICATIONS
+--  Toast qui apparaît en bas à droite avec barre de progression temporelle
 -- ════════════════════════════════════════════════════════════════════════════
 do
     local notifGui = Instance.new("ScreenGui")
@@ -253,11 +318,13 @@ do
     notifGui.DisplayOrder   = 9999
     notifGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
+    -- Essaie CoreGui d'abord (executor), fallback PlayerGui
     local ok = pcall(function() notifGui.Parent = game:GetService("CoreGui") end)
     if not ok then
         notifGui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
     end
 
+    -- Conteneur fixe en bas à droite
     local container = MakeFrame(notifGui,
         UDim2.new(0, 300, 1, 0),
         UDim2.new(1, -310, 0, 0),
@@ -280,6 +347,7 @@ do
         local duration = cfg.Duration or 3
         local ntype    = cfg.Type     or "info"
 
+        -- Couleur d'accent selon le type de notification
         local accent = C.Info
         if     ntype == "success" then accent = C.Success
         elseif ntype == "warning" then accent = C.Warning
@@ -288,6 +356,7 @@ do
 
         notifCount = notifCount + 1
 
+        -- Carte de notification principale
         local notif = MakeFrame(container,
             UDim2.new(1, 0, 0, 72),
             nil,
@@ -298,6 +367,7 @@ do
         Corner(10, notif)
         Stroke(1, accent, notif)
 
+        -- Barre colorée verticale à gauche (indicateur de type)
         local leftBar = MakeFrame(notif,
             UDim2.new(0, 3, 1, 0),
             UDim2.new(0, 0, 0, 0),
@@ -305,12 +375,14 @@ do
         )
         Corner(3, leftBar)
 
+        -- Titre
         local titleLabel = MakeLabel(notif, title,
             UDim2.new(1, -20, 0, 22),
             UDim2.new(0, 14, 0, 8),
             C.TextBright, 13, Enum.Font.GothamBold
         )
 
+        -- Message (peut être multilignes)
         local msgLabel = MakeLabel(notif, message,
             UDim2.new(1, -20, 0, 30),
             UDim2.new(0, 14, 0, 30),
@@ -318,6 +390,7 @@ do
         )
         msgLabel.TextWrapped = true
 
+        -- Barre de progression en bas qui rétrécit avec le temps
         local progressBg = MakeFrame(notif,
             UDim2.new(1, -16, 0, 2),
             UDim2.new(0, 8, 1, -5),
@@ -331,6 +404,7 @@ do
         )
         Corner(2, progressFill)
 
+        -- Animation d'entrée : slide depuis la droite
         notif.Position               = UDim2.new(1, 20, 0, 0)
         notif.BackgroundTransparency = 1
 
@@ -339,11 +413,13 @@ do
             Position = UDim2.new(0, 0, 0, 0),
         }, 0.3, Enum.EasingStyle.Back)
 
+        -- Rétrécissement de la barre de progression
         Tween(progressFill,
             { Size = UDim2.new(0, 0, 1, 0) },
             duration, Enum.EasingStyle.Linear
         )
 
+        -- Sortie après la durée
         task.delay(duration, function()
             Tween(notif, {
                 BackgroundTransparency = 1,
@@ -362,9 +438,10 @@ function VoidUI:CreateWindow(cfg)
     cfg = cfg or {}
     local title       = cfg.Title       or "VoidUI"
     local size        = cfg.Size        or UDim2.new(0, 580, 0, 440)
-    local tabPosition = cfg.TabPosition or "top"
-    local pillIcon    = cfg.Icon        or ""
+    local tabPosition = cfg.TabPosition or "top"   -- "top" ou "side"
+    local pillIcon    = cfg.Icon        or ""       -- rbxassetid://... pour la pill
 
+    -- ScreenGui
     local sg = Instance.new("ScreenGui")
     sg.Name           = "VoidUI_" .. title
     sg.ResetOnSpawn   = false
@@ -376,15 +453,20 @@ function VoidUI:CreateWindow(cfg)
         sg.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
     end
 
+    -- (shadow supprimée car elle ne suivait pas la fenêtre au drag)
+
+    -- ── Fenêtre principale ──
     local main = MakeFrame(sg,
         size,
         UDim2.new(0.5, -size.X.Offset/2, 0.5, -size.Y.Offset/2),
         C.BgDeep, 0
     )
     main.ClipsDescendants = false
+    -- Contour lumineux qui remplace l'ombre
     Corner(12, main)
     Stroke(1.5, C.Accent, main)
 
+    -- Ligne gradient décorative tout en haut (violet → rose, 2px)
     local topLine = MakeFrame(main,
         UDim2.new(1, 0, 0, 2),
         UDim2.new(0, 0, 0, 0),
@@ -392,24 +474,28 @@ function VoidUI:CreateWindow(cfg)
     )
     Gradient(C.Accent, C.AccentPink, topLine, 0)
 
+    -- ── Barre de titre ──
     local titleBar = MakeFrame(main,
         UDim2.new(1, 0, 0, 40),
         UDim2.new(0, 0, 0, 2),
         C.BgDeep, 0
     )
 
+    -- Titre
     MakeLabel(titleBar, title,
         UDim2.new(1, -120, 1, 0),
         UDim2.new(0, 14, 0, 0),
         C.TextBright, 14, Enum.Font.GothamBold
     )
 
+    -- Version (petit, discret)
     MakeLabel(titleBar, "v3.0",
         UDim2.new(0, 35, 1, 0),
         UDim2.new(0, 14, 0, 0),
         C.Accent, 10, Enum.Font.Gotham
     )
 
+    -- Bouton Fermer (×)
     local closeBtn = Instance.new("TextButton")
     closeBtn.Size             = UDim2.new(0, 24, 0, 24)
     closeBtn.Position         = UDim2.new(1, -32, 0.5, -12)
@@ -434,6 +520,7 @@ function VoidUI:CreateWindow(cfg)
         sg:Destroy()
     end)
 
+    -- Bouton Minimiser (—)
     local minBtn = Instance.new("TextButton")
     minBtn.Size             = UDim2.new(0, 24, 0, 24)
     minBtn.Position         = UDim2.new(1, -60, 0.5, -12)
@@ -454,6 +541,7 @@ function VoidUI:CreateWindow(cfg)
         Tween(minBtn, { BackgroundColor3 = C.BgLight, TextColor3 = C.TextMid }, 0.1)
     end)
 
+    -- Séparateur dégradé sous le titre
     local titleSep = MakeFrame(main,
         UDim2.new(1, 0, 0, 1),
         UDim2.new(0, 0, 0, 42),
@@ -461,8 +549,12 @@ function VoidUI:CreateWindow(cfg)
     )
     Gradient(C.Accent, C.AccentPink, titleSep, 0)
 
+    -- Le titre est la zone de drag
     MakeDraggable(titleBar, main)
 
+    -- ── Pill (fenêtre réduite / minimisée) ──
+    -- Si une icône est fournie (pillIcon), on affiche une pill carrée avec l'image
+    -- Sinon on affiche la pill texte classique
     local pillHasIcon = pillIcon ~= ""
     local pillW       = pillHasIcon and 52 or 145
     local pillH       = pillHasIcon and 52 or 36
@@ -480,6 +572,7 @@ function VoidUI:CreateWindow(cfg)
     Stroke(1, C.Accent, pill)
 
     if pillHasIcon then
+        -- Mode icône : image centrée dans la pill carrée
         local pillImg = Instance.new("ImageLabel")
         pillImg.Size                   = UDim2.new(0, 34, 0, 34)
         pillImg.Position               = UDim2.new(0.5, -17, 0.5, -17)
@@ -489,6 +582,7 @@ function VoidUI:CreateWindow(cfg)
         pillImg.ZIndex                 = 101
         pillImg.Parent                 = pill
 
+        -- Petit point pulsant en bas à droite de la pill icône
         local pillDot = MakeFrame(pill,
             UDim2.new(0, 10, 0, 10),
             UDim2.new(1, -12, 1, -12),
@@ -498,6 +592,7 @@ function VoidUI:CreateWindow(cfg)
         Corner(5, pillDot)
         Stroke(1.5, C.BgMid, pillDot)
 
+        -- Animation pulsante
         coroutine.wrap(function()
             while true do
                 if pill.Visible then
@@ -511,6 +606,7 @@ function VoidUI:CreateWindow(cfg)
             end
         end)()
     else
+        -- Mode texte classique : point + titre + flèche
         local pillDot = MakeFrame(pill,
             UDim2.new(0, 7, 0, 7),
             UDim2.new(0, 11, 0.5, -3),
@@ -534,6 +630,7 @@ function VoidUI:CreateWindow(cfg)
         )
         pillArrow.ZIndex = 101
 
+        -- Animation pulsante du point
         coroutine.wrap(function()
             while true do
                 if pill.Visible then
@@ -548,8 +645,10 @@ function VoidUI:CreateWindow(cfg)
         end)()
     end
 
+    -- La pill est draggable
     MakeDraggable(pill, pill)
 
+    -- Hover sur la pill
     pill.MouseEnter:Connect(function()
         Tween(pill, { BackgroundColor3 = C.BgLighter }, 0.1)
     end)
@@ -557,9 +656,11 @@ function VoidUI:CreateWindow(cfg)
         Tween(pill, { BackgroundColor3 = C.BgMid }, 0.1)
     end)
 
+    -- État minimisation
     local minimized = false
     local savedPos  = main.Position
 
+    -- Minimiser : fenêtre -> pill
     minBtn.MouseButton1Click:Connect(function()
         if minimized then return end
         minimized = true
@@ -575,11 +676,13 @@ function VoidUI:CreateWindow(cfg)
         main.Size                = size
         main.BackgroundTransparency = 0
 
+        -- Pill apparaît avec animation
         pill.Visible = true
         pill.Size    = UDim2.new(0, 0, 0, pillH)
         Tween(pill, { Size = UDim2.new(0, pillW, 0, pillH) }, 0.28, Enum.EasingStyle.Back)
     end)
 
+    -- Restaurer : pill -> fenêtre
     pill.MouseButton1Click:Connect(function()
         if not minimized then return end
         minimized = false
@@ -595,9 +698,12 @@ function VoidUI:CreateWindow(cfg)
         Tween(main, { Size = size }, 0.3, Enum.EasingStyle.Back)
     end)
 
+    -- ── Barre des onglets + Zone de contenu ──
+    -- Deux modes : "top" (onglets horizontaux en haut) ou "side" (onglets verticaux à gauche)
     local tabBar, contentArea, tabLayout
 
     if tabPosition == "top" then
+        -- ── MODE TOP : tab bar horizontale sous le titre ──
         tabBar = MakeFrame(main,
             UDim2.new(1, 0, 0, 34),
             UDim2.new(0, 0, 0, 43),
@@ -611,6 +717,7 @@ function VoidUI:CreateWindow(cfg)
         tabLayout.Parent        = tabBar
         Pad(4, 4, 8, 8, tabBar)
 
+        -- Séparateur sous la tab bar
         local tabSep = MakeFrame(main,
             UDim2.new(1, 0, 0, 1),
             UDim2.new(0, 0, 0, 77),
@@ -618,6 +725,7 @@ function VoidUI:CreateWindow(cfg)
         )
         Gradient(C.Accent, C.AccentPink, tabSep, 0)
 
+        -- Contenu prend toute la largeur sous la tab bar
         contentArea = MakeFrame(main,
             UDim2.new(1, 0, 1, -79),
             UDim2.new(0, 0, 0, 79),
@@ -626,7 +734,8 @@ function VoidUI:CreateWindow(cfg)
         contentArea.ClipsDescendants = true
 
     else
-        local sideWidth = 110
+        -- ── MODE SIDE : tab bar verticale à gauche ──
+        local sideWidth = 110  -- largeur de la colonne de gauche
 
         tabBar = MakeFrame(main,
             UDim2.new(0, sideWidth, 1, -44),
@@ -641,6 +750,7 @@ function VoidUI:CreateWindow(cfg)
         tabLayout.Parent        = tabBar
         Pad(8, 8, 6, 6, tabBar)
 
+        -- Séparateur vertical entre la sidebar et le contenu
         local sideSep = MakeFrame(main,
             UDim2.new(0, 1, 1, -44),
             UDim2.new(0, sideWidth, 0, 44),
@@ -648,6 +758,7 @@ function VoidUI:CreateWindow(cfg)
         )
         Gradient(C.Accent, C.AccentPink, sideSep, 90)
 
+        -- Contenu à droite de la sidebar
         contentArea = MakeFrame(main,
             UDim2.new(1, -sideWidth - 1, 1, -44),
             UDim2.new(0, sideWidth + 1, 0, 44),
@@ -656,9 +767,13 @@ function VoidUI:CreateWindow(cfg)
         contentArea.ClipsDescendants = true
     end
 
+    -- Animation d'ouverture de la fenêtre
     main.Size = UDim2.new(0, size.X.Offset, 0, 0)
     Tween(main, { Size = size }, 0.38, Enum.EasingStyle.Back)
 
+    -- ════════════════════════════════════════════════════════════════════════
+    --  OBJET FENÊTRE (Window)
+    -- ════════════════════════════════════════════════════════════════════════
     local Window = {
         _tabs      = {},
         _activeTab = nil,
@@ -666,6 +781,7 @@ function VoidUI:CreateWindow(cfg)
         _tabFrames = {},
     }
 
+    -- Active visuellement un onglet et cache les autres
     local function SetActiveTab(name)
         for n, frame in pairs(Window._tabFrames) do
             frame.Visible = (n == name)
@@ -677,6 +793,7 @@ function VoidUI:CreateWindow(cfg)
                 local uline = btn:FindFirstChild("Uline")
                 if uline then
                     if tabPosition == "side" then
+                        -- Mode side : barre gauche avec gradient
                         Gradient(C.Accent, C.AccentPink, uline, 90)
                         Tween(uline, { BackgroundColor3 = C.Accent }, 0.15)
                     else
@@ -693,7 +810,9 @@ function VoidUI:CreateWindow(cfg)
         Window._activeTab = name
     end
 
+    -- ── AJOUTER UN ONGLET ──
     function Window:AddTab(name)
+        -- Bouton de l'onglet — taille et style différents selon top/side
         local tabBtn = Instance.new("TextButton")
         tabBtn.BackgroundColor3 = C.BgDeep
         tabBtn.BorderSizePixel  = 0
@@ -705,9 +824,11 @@ function VoidUI:CreateWindow(cfg)
         tabBtn.Parent           = tabBar
 
         if tabPosition == "top" then
+            -- Bouton horizontal compact
             tabBtn.Size = UDim2.new(0, 88, 1, 0)
             Corner(6, tabBtn)
 
+            -- Soulignement bas qui s'allume quand actif
             local uline = MakeFrame(tabBtn,
                 UDim2.new(0.65, 0, 0, 2),
                 UDim2.new(0.175, 0, 1, -2),
@@ -716,11 +837,13 @@ function VoidUI:CreateWindow(cfg)
             uline.Name = "Uline"
             Corner(2, uline)
         else
+            -- Bouton vertical pleine largeur
             tabBtn.Size             = UDim2.new(1, 0, 0, 32)
             tabBtn.TextXAlignment   = Enum.TextXAlignment.Left
             Corner(7, tabBtn)
             Pad(0, 0, 10, 0, tabBtn)
 
+            -- Barre gauche qui s'allume quand actif (remplace le soulignement)
             local uline = MakeFrame(tabBtn,
                 UDim2.new(0, 2, 0.5, 0),
                 UDim2.new(0, 0, 0.25, 0),
@@ -730,6 +853,7 @@ function VoidUI:CreateWindow(cfg)
             Corner(2, uline)
         end
 
+        -- Hover sur le bouton d'onglet
         tabBtn.MouseEnter:Connect(function()
             if Window._activeTab ~= name then
                 Tween(tabBtn, { BackgroundColor3 = C.BgLight }, 0.1)
@@ -744,6 +868,7 @@ function VoidUI:CreateWindow(cfg)
             SetActiveTab(name)
         end)
 
+        -- ScrollingFrame pour le contenu de cet onglet
         local scrollFrame = Instance.new("ScrollingFrame")
         scrollFrame.Size                 = UDim2.new(1, 0, 1, 0)
         scrollFrame.BackgroundTransparency = 1
@@ -752,15 +877,17 @@ function VoidUI:CreateWindow(cfg)
         scrollFrame.ScrollBarImageColor3 = C.Accent
         scrollFrame.CanvasSize           = UDim2.new(0, 0, 0, 0)
         scrollFrame.Visible              = false
-        scrollFrame.ClipsDescendants     = false
+        scrollFrame.ClipsDescendants     = false  -- permet aux dropdowns de dépasser
         scrollFrame.Parent               = contentArea
 
+        -- Layout vertical avec espacement entre les éléments
         local listLayout = Instance.new("UIListLayout")
         listLayout.SortOrder = Enum.SortOrder.LayoutOrder
         listLayout.Padding   = UDim.new(0, 6)
         listLayout.Parent    = scrollFrame
         Pad(10, 10, 10, 10, scrollFrame)
 
+        -- Redimensionne automatiquement le canvas quand le contenu change
         listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
             scrollFrame.CanvasSize = UDim2.new(0, 0, 0,
                 listLayout.AbsoluteContentSize.Y + 20
@@ -771,20 +898,27 @@ function VoidUI:CreateWindow(cfg)
         Window._tabFrames[name] = scrollFrame
         table.insert(Window._tabs, name)
 
+        -- Le premier onglet est actif par défaut
         if #Window._tabs == 1 then
             SetActiveTab(name)
         end
 
+        -- ════════════════════════════════════════════════════════════════════
+        --  OBJET ONGLET (Tab)
+        --  Contient tous les composants UI
+        -- ════════════════════════════════════════════════════════════════════
         local Tab = {
             _frame = scrollFrame,
             _order = 0,
         }
 
+        -- Incrémente le LayoutOrder pour maintenir l'ordre d'insertion
         local function NextOrder()
             Tab._order = Tab._order + 1
             return Tab._order
         end
 
+        -- Crée un wrapper transparent dans la liste (hauteur configurable)
         local function MakeItem(height)
             local f = MakeFrame(scrollFrame,
                 UDim2.new(1, 0, 0, height or 34),
@@ -794,6 +928,7 @@ function VoidUI:CreateWindow(cfg)
             return f
         end
 
+        -- Refresh du canvas (à appeler après les composants dépliables)
         local function RefreshCanvas()
             task.defer(function()
                 scrollFrame.CanvasSize = UDim2.new(0, 0, 0,
@@ -802,10 +937,12 @@ function VoidUI:CreateWindow(cfg)
             end)
         end
 
+        -- ── LABEL / SECTION ──────────────────────────────────────────────
         function Tab:AddLabel(text)
             local it = MakeItem(22)
             it.BackgroundTransparency = 1
 
+            -- Ligne dégradée en fond
             local line = MakeFrame(it,
                 UDim2.new(1, 0, 0, 1),
                 UDim2.new(0, 0, 0.5, 0),
@@ -813,6 +950,7 @@ function VoidUI:CreateWindow(cfg)
             )
             Gradient(C.Accent, C.AccentPink, line, 0)
 
+            -- Badge texte centré sur la ligne
             local badge = MakeFrame(it,
                 UDim2.new(0, 0, 1, 0),
                 UDim2.new(0, 0, 0, 0),
@@ -833,9 +971,12 @@ function VoidUI:CreateWindow(cfg)
             }
         end
 
+        -- ── BOUTON ───────────────────────────────────────────────────────
+        --  cfg.Colors = { Color3, Color3 } active un fond dégradé personnalisé
+        --  Exemple : Colors = { Color3.fromRGB(130,80,255), Color3.fromRGB(220,80,160) }
         function Tab:AddButton(cfg)
             cfg = cfg or {}
-            local colors  = cfg.Colors
+            local colors  = cfg.Colors  -- nil = style par défaut
             local hasGrad = colors and #colors >= 2
             local it      = MakeItem(34)
 
@@ -851,12 +992,18 @@ function VoidUI:CreateWindow(cfg)
             Corner(8, btn)
 
             if hasGrad then
+                -- ── Mode dégradé personnalisé ──
+                -- On remplace le stroke par un contour de la couleur dominante
                 Stroke(1, colors[1], btn)
+
+                -- Gradient plein entre les deux couleurs fournies
                 local grad = Instance.new("UIGradient")
                 grad.Color    = ColorSequence.new(colors[1], colors[2])
                 grad.Rotation = 0
                 grad.Parent   = btn
 
+                -- Petit fondu animé au hover : on fait tourner le gradient
+                -- et on éclaircit légèrement le fond
                 btn.MouseEnter:Connect(function()
                     Tween(btn, { BackgroundColor3 = colors[2] }, 0.3)
                     TweenService:Create(grad, TweenInfo.new(0.3, Enum.EasingStyle.Quint), { Rotation = 15 }):Play()
@@ -874,9 +1021,11 @@ function VoidUI:CreateWindow(cfg)
                     TweenService:Create(grad, TweenInfo.new(0.15), { Rotation = 0 }):Play()
                 end)
             else
+                -- ── Mode par défaut (pas de Colors fourni) ──
                 Stroke(1, C.BorderDim, btn)
                 MakeAccentBar(btn)
 
+                -- Overlay gradient subtil violet/rose en fond
                 local grad = Instance.new("UIGradient")
                 grad.Color    = ColorSequence.new(C.Accent, C.AccentPink)
                 grad.Rotation = 0
@@ -920,6 +1069,7 @@ function VoidUI:CreateWindow(cfg)
             }
         end
 
+        -- ── TOGGLE ───────────────────────────────────────────────────────
         function Tab:AddToggle(cfg)
             cfg = cfg or {}
             local state = cfg.Default or false
@@ -936,6 +1086,7 @@ function VoidUI:CreateWindow(cfg)
                 C.TextBright, 13, Enum.Font.GothamBold
             )
 
+            -- Pill du toggle
             local pill = MakeFrame(bg,
                 UDim2.new(0, 42, 0, 22),
                 UDim2.new(1, -50, 0.5, -11),
@@ -944,6 +1095,7 @@ function VoidUI:CreateWindow(cfg)
             Corner(11, pill)
             Stroke(1, C.BorderDim, pill)
 
+            -- Knob (boule blanche)
             local knob = MakeFrame(pill,
                 UDim2.new(0, 16, 0, 16),
                 state and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8),
@@ -961,6 +1113,7 @@ function VoidUI:CreateWindow(cfg)
                 if cfg.Callback then cfg.Callback(state) end
             end
 
+            -- Zone de clic invisible sur tout le composant
             local cz = Instance.new("TextButton")
             cz.Size                 = UDim2.new(1, 0, 1, 0)
             cz.BackgroundTransparency = 1
@@ -979,6 +1132,7 @@ function VoidUI:CreateWindow(cfg)
             }
         end
 
+        -- ── SLIDER ───────────────────────────────────────────────────────
         function Tab:AddSlider(cfg)
             cfg = cfg or {}
             local minVal = cfg.Min     or 0
@@ -1006,6 +1160,7 @@ function VoidUI:CreateWindow(cfg)
                 Enum.TextXAlignment.Right
             )
 
+            -- Track du slider
             local track = MakeFrame(bg,
                 UDim2.new(1, -20, 0, 5),
                 UDim2.new(0, 10, 1, -12),
@@ -1013,6 +1168,7 @@ function VoidUI:CreateWindow(cfg)
             )
             Corner(3, track)
 
+            -- Remplissage avec gradient violet->rose
             local fill = MakeFrame(track,
                 UDim2.new((curVal - minVal) / (maxVal - minVal), 0, 1, 0),
                 nil, C.White, 0
@@ -1020,6 +1176,7 @@ function VoidUI:CreateWindow(cfg)
             Corner(3, fill)
             Gradient(C.Accent, C.AccentPink, fill, 0)
 
+            -- Poignée ronde
             local handle = MakeFrame(track,
                 UDim2.new(0, 14, 0, 14),
                 UDim2.new((curVal - minVal) / (maxVal - minVal), 0, 0.5, 0),
@@ -1028,6 +1185,7 @@ function VoidUI:CreateWindow(cfg)
             handle.AnchorPoint = Vector2.new(0.5, 0.5)
             Corner(7, handle)
 
+            -- Bouton de drag invisible sur le track
             local dragBtn = Instance.new("TextButton")
             dragBtn.Size                 = UDim2.new(1, 0, 0, 26)
             dragBtn.Position             = UDim2.new(0, 0, 0, -10)
@@ -1078,6 +1236,7 @@ function VoidUI:CreateWindow(cfg)
             }
         end
 
+        -- ── DROPDOWN ─────────────────────────────────────────────────────
         function Tab:AddDropdown(cfg)
             cfg = cfg or {}
             local options  = cfg.Options or {}
@@ -1086,6 +1245,7 @@ function VoidUI:CreateWindow(cfg)
             local dropH    = #options * 28 + 6
             local it       = MakeItem(34)
 
+            -- Bouton principal du dropdown
             local btn = Instance.new("TextButton")
             btn.Size             = UDim2.new(1, 0, 1, 0)
             btn.BackgroundColor3 = C.BgLight
@@ -1116,6 +1276,8 @@ function VoidUI:CreateWindow(cfg)
                 Enum.TextXAlignment.Center
             )
 
+            -- La liste est enfant du scrollFrame directement (pas de it)
+            -- pour éviter le clipping — elle se positionne via AbsolutePosition
             local dropList = MakeFrame(scrollFrame,
                 UDim2.new(0, 0, 0, dropH),
                 UDim2.new(0, 0, 0, 0),
@@ -1131,6 +1293,7 @@ function VoidUI:CreateWindow(cfg)
             dropLayout.SortOrder = Enum.SortOrder.LayoutOrder
             dropLayout.Parent    = dropList
 
+            -- Repositionne la dropList sous le bouton via AbsolutePosition
             local function UpdateDropPosition()
                 local absPos  = btn.AbsolutePosition
                 local absSize = btn.AbsoluteSize
@@ -1187,8 +1350,10 @@ function VoidUI:CreateWindow(cfg)
                 end
             end)
 
+            -- Fermeture automatique si clic en dehors du dropdown
             UserInputService.InputBegan:Connect(function(input)
                 if input.UserInputType == Enum.UserInputType.MouseButton1 and open then
+                    -- Vérifie si le clic est en dehors du bouton et de la liste
                     local mousePos = UserInputService:GetMouseLocation()
                     local btnPos   = btn.AbsolutePosition
                     local btnSize  = btn.AbsoluteSize
@@ -1209,11 +1374,14 @@ function VoidUI:CreateWindow(cfg)
                 end
             end)
 
+            -- Fonction pour reconstruire la liste avec de nouvelles options
             local function RebuildOptions(newOptions)
+                -- Supprime les anciens boutons
                 for _, child in ipairs(dropList:GetChildren()) do
                     if child:IsA("TextButton") then child:Destroy() end
                 end
 
+                -- Reconstruit avec les nouvelles options
                 for i, opt in ipairs(newOptions) do
                     local optBtn = Instance.new("TextButton")
                     optBtn.Size                   = UDim2.new(1, 0, 0, 28)
@@ -1246,9 +1414,11 @@ function VoidUI:CreateWindow(cfg)
                     end)
                 end
 
+                -- Redimensionne la dropList
                 local newH = #newOptions * 28 + 6
                 dropList.Size = UDim2.new(0, btn.AbsoluteSize.X, 0, newH)
 
+                -- Met à jour la sélection si l'option actuelle n'existe plus
                 local found = false
                 for _, opt in ipairs(newOptions) do
                     if opt == selected then found = true break end
@@ -1260,12 +1430,20 @@ function VoidUI:CreateWindow(cfg)
             end
 
             return {
-                SetValue   = function(_, v) selected = v selLabel.Text = v if cfg.Callback then cfg.Callback(v) end end,
-                GetValue   = function() return selected end,
-                SetOptions = function(_, newOptions) RebuildOptions(newOptions) end,
+                SetValue = function(_, v)
+                    selected      = v
+                    selLabel.Text = v
+                    if cfg.Callback then cfg.Callback(v) end
+                end,
+                GetValue = function() return selected end,
+                -- Change les options dynamiquement après injection
+                SetOptions = function(_, newOptions)
+                    RebuildOptions(newOptions)
+                end,
             }
         end
 
+        -- ── TEXT INPUT ───────────────────────────────────────────────────
         function Tab:AddTextInput(cfg)
             cfg = cfg or {}
             local it = MakeItem(34)
@@ -1312,6 +1490,7 @@ function VoidUI:CreateWindow(cfg)
             }
         end
 
+        -- ── KEYBIND ──────────────────────────────────────────────────────
         function Tab:AddKeybind(cfg)
             cfg = cfg or {}
             local currentKey = cfg.Default or Enum.KeyCode.F
@@ -1342,12 +1521,14 @@ function VoidUI:CreateWindow(cfg)
             Corner(6, keyBtn)
             Stroke(1, C.Accent, keyBtn)
 
+            -- Clic : entre en mode écoute
             keyBtn.MouseButton1Click:Connect(function()
                 listening          = true
                 keyBtn.Text        = "..."
                 keyBtn.TextColor3  = C.Warning
             end)
 
+            -- Écoute la prochaine touche pressée
             UserInputService.InputBegan:Connect(function(input, gameProcessed)
                 if listening and input.UserInputType == Enum.UserInputType.Keyboard then
                     listening         = false
@@ -1355,6 +1536,7 @@ function VoidUI:CreateWindow(cfg)
                     keyBtn.Text       = currentKey.Name
                     keyBtn.TextColor3 = C.Accent
                 end
+                -- Fire le callback quand la touche est pressée en jeu
                 if not listening and not gameProcessed and input.KeyCode == currentKey then
                     if cfg.Callback then cfg.Callback(currentKey) end
                 end
@@ -1365,6 +1547,7 @@ function VoidUI:CreateWindow(cfg)
             }
         end
 
+        -- ── COLOR PICKER (HSV) ───────────────────────────────────────────
         function Tab:AddColorPicker(cfg)
             cfg = cfg or {}
             local color = cfg.Default or Color3.fromRGB(200, 80, 200)
@@ -1383,6 +1566,7 @@ function VoidUI:CreateWindow(cfg)
                 C.TextBright, 13, Enum.Font.GothamBold
             )
 
+            -- Carré de prévisualisation de la couleur
             local swatch = MakeFrame(bg,
                 UDim2.new(0, 28, 0, 20),
                 UDim2.new(1, -40, 0.5, -10),
@@ -1398,6 +1582,7 @@ function VoidUI:CreateWindow(cfg)
                 Enum.TextXAlignment.Center
             )
 
+            -- Panneau HSV dépliable
             local panel = MakeFrame(bg,
                 UDim2.new(1, 0, 0, 88),
                 UDim2.new(0, 0, 1, 4),
@@ -1416,6 +1601,7 @@ function VoidUI:CreateWindow(cfg)
             local h, s, v = Color3.toHSV(color)
             local hsvValues = { h, s, v }
 
+            -- Crée un slider HSV pour H, S ou V
             local sliderLabels = { "H", "S", "V" }
             local sliderColors = {
                 Color3.fromRGB(255, 100, 100),
@@ -1464,7 +1650,7 @@ function VoidUI:CreateWindow(cfg)
                 dragBtn.Parent               = track
 
                 local sliding = false
-                local idx     = i
+                local idx     = i  -- capture de l'index dans la closure
 
                 local function SlideHSV(mouseX)
                     local rel = math.clamp(
@@ -1495,6 +1681,7 @@ function VoidUI:CreateWindow(cfg)
                 end)
             end
 
+            -- Ouvrir/fermer le panneau au clic
             local clickZone = Instance.new("TextButton")
             clickZone.Size                 = UDim2.new(1, 0, 0, 34)
             clickZone.BackgroundTransparency = 1
@@ -1521,6 +1708,7 @@ function VoidUI:CreateWindow(cfg)
             }
         end
 
+        -- ── PROGRESS BAR (non-interactive, mise à jour via SetValue) ─────
         function Tab:AddProgressBar(cfg)
             cfg = cfg or {}
             local maxVal = cfg.Max    or 100
@@ -1572,6 +1760,20 @@ function VoidUI:CreateWindow(cfg)
             }
         end
 
+        -- ── CARD GRID ★ ─────────────────────────────────────────────────
+        --  Affiche des items visuels (oeufs, items, etc.) en grille N colonnes
+        --
+        --  Chaque card contient :
+        --    • Grande image centrée en haut
+        --    • Nom en bas (tronqué si trop long)
+        --    • Checkmark ✓ dans le coin sup droit quand sélectionné
+        --    • Bordure violette + fond éclairci au hover et à la sélection
+        --
+        --  cfg.Items    = { { Name = "EpicEgg", Icon = "rbxassetid://..." }, ... }
+        --  cfg.Columns  = 3 (défaut)
+        --  cfg.Callback = function(selectedTable) end
+        --    → selectedTable est { ["EpicEgg"] = true, ... }
+        -- ─────────────────────────────────────────────────────────────────
         function Tab:AddCardGrid(cfg)
             cfg = cfg or {}
             local items    = cfg.Items    or {}
@@ -1579,14 +1781,20 @@ function VoidUI:CreateWindow(cfg)
             local callback = cfg.Callback or function() end
             local selected = {}
 
+            -- Hauteur d'une card et espacement
             local cardH = 115
             local gap   = 8
+
+            -- Calcule la hauteur totale du conteneur
             local rows   = math.ceil(#items / cols)
             local totalH = rows * (cardH + gap) + gap
 
             local it = MakeItem(totalH)
+
+            -- Conteneur de la grille
             local grid = MakeFrame(it, UDim2.new(1, 0, 1, 0), nil, C.Black, 1)
 
+            -- UIGridLayout pour l'arrangement automatique en colonnes
             local gridLayout = Instance.new("UIGridLayout")
             gridLayout.CellSize      = UDim2.new(1/cols, -(gap * (cols + 1) / cols), 0, cardH)
             gridLayout.CellPadding   = UDim2.new(0, gap, 0, gap)
@@ -1596,12 +1804,16 @@ function VoidUI:CreateWindow(cfg)
             Pad(gap, gap, gap, gap, grid)
 
             for i, item in ipairs(items) do
+                -- ── Card individuelle ──
                 local card = MakeFrame(grid, UDim2.new(0, 1, 0, 1), nil, C.BgMid, 0)
                 card.LayoutOrder = i
                 Corner(10, card)
                 local cardStroke = Stroke(1, C.BorderDim, card)
+
+                -- Léger gradient sur la card (fond haut -> bas)
                 Gradient(C.BgMid, C.BgLight, card, 90)
 
+                -- Image grande centrée en haut de la card
                 local img = Instance.new("ImageLabel")
                 img.Size                   = UDim2.new(0.72, 0, 0, 68)
                 img.Position               = UDim2.new(0.14, 0, 0, 7)
@@ -1610,6 +1822,7 @@ function VoidUI:CreateWindow(cfg)
                 img.ScaleType              = Enum.ScaleType.Fit
                 img.Parent                 = card
 
+                -- Nom de l'item en bas de la card
                 local nameLabel = MakeLabel(card,
                     item.Name or "",
                     UDim2.new(1, -6, 0, 18),
@@ -1619,10 +1832,12 @@ function VoidUI:CreateWindow(cfg)
                 )
                 nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
 
+                -- Checkmark dans le coin supérieur droit
+                -- Caché (transparent) par défaut, apparaît à la sélection
                 local checkBg = MakeFrame(card,
                     UDim2.new(0, 22, 0, 22),
                     UDim2.new(1, -26, 0, 4),
-                    C.Accent, 1
+                    C.Accent, 1   -- transparent par défaut
                 )
                 Corner(11, checkBg)
 
@@ -1633,6 +1848,7 @@ function VoidUI:CreateWindow(cfg)
                 )
                 checkLabel.TextYAlignment = Enum.TextYAlignment.Center
 
+                -- Zone de clic couvrant toute la card
                 local clickZone = Instance.new("TextButton")
                 clickZone.Size                 = UDim2.new(1, 0, 1, 0)
                 clickZone.BackgroundTransparency = 1
@@ -1643,23 +1859,28 @@ function VoidUI:CreateWindow(cfg)
 
                 local function SetCardSelected(v)
                     isSelected = v
+
                     if v then
+                        -- Sélection : bordure violette épaisse, fond éclairci, checkmark visible
                         selected[item.Name] = true
-                        Tween(cardStroke,  { Color = C.Accent, Thickness = 2 },    0.2)
-                        Tween(card,        { BackgroundColor3 = C.BgLighter },      0.2)
-                        Tween(checkBg,     { BackgroundTransparency = 0 },          0.2)
-                        Tween(nameLabel,   { TextColor3 = C.TextBright },           0.2)
-                        Tween(img,         { ImageTransparency = 0 },               0.1)
+                        Tween(cardStroke,  { Color = C.Accent, Thickness = 2 },       0.2)
+                        Tween(card,        { BackgroundColor3 = C.BgLighter },         0.2)
+                        Tween(checkBg,     { BackgroundTransparency = 0 },             0.2)
+                        Tween(nameLabel,   { TextColor3 = C.TextBright },              0.2)
+                        Tween(img,         { ImageTransparency = 0 },                  0.1)
                     else
+                        -- Désélection : retour à l'état neutre
                         selected[item.Name] = nil
-                        Tween(cardStroke,  { Color = C.BorderDim, Thickness = 1 }, 0.2)
-                        Tween(card,        { BackgroundColor3 = C.BgMid },          0.2)
-                        Tween(checkBg,     { BackgroundTransparency = 1 },          0.2)
-                        Tween(nameLabel,   { TextColor3 = C.TextMid },              0.2)
+                        Tween(cardStroke,  { Color = C.BorderDim, Thickness = 1 },    0.2)
+                        Tween(card,        { BackgroundColor3 = C.BgMid },             0.2)
+                        Tween(checkBg,     { BackgroundTransparency = 1 },             0.2)
+                        Tween(nameLabel,   { TextColor3 = C.TextMid },                 0.2)
                     end
+
                     callback(selected)
                 end
 
+                -- Effet hover (uniquement si pas sélectionné)
                 clickZone.MouseEnter:Connect(function()
                     if not isSelected then
                         Tween(card,       { BackgroundColor3 = C.BgLight },  0.12)
@@ -1672,16 +1893,366 @@ function VoidUI:CreateWindow(cfg)
                         Tween(cardStroke, { Color = C.BorderDim },           0.12)
                     end
                 end)
+
+                -- Clic : toggle la sélection
                 clickZone.MouseButton1Click:Connect(function()
                     SetCardSelected(not isSelected)
                 end)
             end
 
             return {
-                GetSelected = function() return selected end,
+                -- Retourne la table des éléments sélectionnés { [name] = true }
+                GetSelected = function()
+                    return selected
+                end,
+                -- Permet de forcer la sélection d'un item par code
+                -- (non implémenté car nécessite une ref aux cards individuelles)
             }
         end
 
+        -- ── FILTERED CARD GRID ★ ────────────────────────────────────────
+        --  CardGrid avec dropdown de filtre intégré.
+        --  La grille se reconstruit dynamiquement à chaque changement de filtre.
+        --
+        --  cfg.Groups   = {
+        --      { Label = "Common",    Items = { { Name = "...", Icon = "rbxassetid://..." } } },
+        --      { Label = "Rare",      Items = { ... } },
+        --  }
+        --  cfg.Columns  = 4                    (défaut)
+        --  cfg.Callback = function(selected)   { ["ItemName"] = true, ... }
+        --                                      Toutes sélections confondues, tous groupes
+        --
+        --  Retourne :
+        --    :GetSelected()  → table globale des sélections
+        --    :SelectAll(groupLabel)   → sélectionne tout un groupe
+        --    :DeselectAll()           → vide toute la sélection
+        -- ─────────────────────────────────────────────────────────────────
+        function Tab:AddFilteredCardGrid(cfg)
+            cfg = cfg or {}
+            local groups   = cfg.Groups   or {}
+            local cols     = cfg.Columns  or 4
+            local callback = cfg.Callback or function() end
+
+            -- Sélection globale persistante (survit aux reconstructions)
+            local globalSelected = {}
+
+            -- Index des groupes par label pour accès rapide
+            local groupIndex = {}
+            local groupLabels = {}
+            for _, g in ipairs(groups) do
+                groupIndex[g.Label] = g
+                table.insert(groupLabels, g.Label)
+            end
+
+            local currentGroup = groupLabels[1] or ""
+
+            -- ── Zone de contrôle (dropdown + boutons) — jamais détruite ──
+            local cardH   = 115
+            local gap     = 8
+
+            -- Hauteur fixe pour la zone de contrôle
+            local ctrlH = 34 + 6 + 34  -- dropdown + gap + boutons
+            local ctrlIt = MakeItem(ctrlH)
+
+            -- Fond transparent
+            ctrlIt.BackgroundTransparency = 1
+
+            -- Dropdown de filtre
+            local dropBg = MakeFrame(ctrlIt,
+                UDim2.new(1, 0, 0, 34),
+                UDim2.new(0, 0, 0, 0),
+                C.BgLight, 0
+            )
+            Corner(8, dropBg)
+            Stroke(1, C.BorderDim, dropBg)
+            MakeAccentBar(dropBg)
+
+            MakeLabel(dropBg, "Rareté",
+                UDim2.new(0.45, 0, 1, 0),
+                UDim2.new(0, 14, 0, 0),
+                C.TextMid, 11, Enum.Font.Gotham
+            )
+
+            local selLabel = MakeLabel(dropBg, currentGroup,
+                UDim2.new(0.42, -28, 1, 0),
+                UDim2.new(0.45, 0, 0, 0),
+                C.TextBright, 12, Enum.Font.GothamBold,
+                Enum.TextXAlignment.Right
+            )
+
+            local dropArrow = MakeLabel(dropBg, "▾",
+                UDim2.new(0, 16, 1, 0),
+                UDim2.new(1, -20, 0, 0),
+                C.Accent, 12, Enum.Font.GothamBold,
+                Enum.TextXAlignment.Center
+            )
+
+            -- Liste déroulante (enfant du scrollFrame pour éviter le clipping)
+            local dropH    = #groupLabels * 28 + 6
+            local dropList = MakeFrame(scrollFrame,
+                UDim2.new(0, 0, 0, dropH),
+                UDim2.new(0, 0, 0, 0),
+                C.BgMid, 0
+            )
+            dropList.Visible          = false
+            dropList.ZIndex           = 60
+            dropList.ClipsDescendants = false
+            Corner(8, dropList)
+            Stroke(1, C.Accent, dropList)
+
+            local dropLayout2 = Instance.new("UIListLayout")
+            dropLayout2.SortOrder = Enum.SortOrder.LayoutOrder
+            dropLayout2.Parent    = dropList
+
+            local dropOpen = false
+
+            local function CloseDropdown()
+                dropOpen         = false
+                dropList.Visible = false
+                dropArrow.Text   = "▾"
+            end
+
+            local function UpdateDropPos()
+                local absPos  = dropBg.AbsolutePosition
+                local absSize = dropBg.AbsoluteSize
+                local sfPos   = scrollFrame.AbsolutePosition
+                dropList.Size     = UDim2.new(0, absSize.X, 0, dropH)
+                dropList.Position = UDim2.new(0,
+                    absPos.X - sfPos.X,
+                    0,
+                    absPos.Y - sfPos.Y + absSize.Y + 2
+                )
+            end
+
+            -- ── Conteneur de la grille (reconstruit à chaque filtre) ──
+            -- On le place APRÈS ctrlIt dans le scroll via LayoutOrder
+            local gridIt = MakeFrame(scrollFrame,
+                UDim2.new(1, 0, 0, 0),
+                nil, C.Black, 1
+            )
+            gridIt.LayoutOrder = NextOrder()   -- sera toujours après ctrlIt
+
+            -- Donne à ctrlIt son ordre (avant gridIt)
+            ctrlIt.LayoutOrder = Tab._order - 1
+
+            local currentCardStates = {}  -- { [itemName] = isSelected }
+
+            local function BuildGrid(groupLabel)
+                -- Détruit le contenu précédent de la grille
+                for _, child in ipairs(gridIt:GetChildren()) do
+                    if not child:IsA("UIListLayout") then
+                        child:Destroy()
+                    end
+                end
+
+                local grp = groupIndex[groupLabel]
+                if not grp or #grp.Items == 0 then
+                    gridIt.Size = UDim2.new(1, 0, 0, 0)
+                    RefreshCanvas()
+                    return
+                end
+
+                local items   = grp.Items
+                local rows    = math.ceil(#items / cols)
+                local totalH2 = rows * (cardH + gap) + gap
+                gridIt.Size   = UDim2.new(1, 0, 0, totalH2)
+
+                local gridFrame = MakeFrame(gridIt,
+                    UDim2.new(1, 0, 1, 0),
+                    nil, C.Black, 1
+                )
+
+                local gridLayout = Instance.new("UIGridLayout")
+                gridLayout.CellSize      = UDim2.new(1/cols, -(gap * (cols + 1) / cols), 0, cardH)
+                gridLayout.CellPadding   = UDim2.new(0, gap, 0, gap)
+                gridLayout.SortOrder     = Enum.SortOrder.LayoutOrder
+                gridLayout.FillDirection = Enum.FillDirection.Horizontal
+                gridLayout.Parent        = gridFrame
+                Pad(gap, gap, gap, gap, gridFrame)
+
+                for i, item in ipairs(items) do
+                    local card = MakeFrame(gridFrame, UDim2.new(0,1,0,1), nil, C.BgMid, 0)
+                    card.LayoutOrder = i
+                    Corner(10, card)
+                    local cardStroke = Stroke(1, C.BorderDim, card)
+                    Gradient(C.BgMid, C.BgLight, card, 90)
+
+                    local img = Instance.new("ImageLabel")
+                    img.Size                   = UDim2.new(0.72, 0, 0, 68)
+                    img.Position               = UDim2.new(0.14, 0, 0, 7)
+                    img.BackgroundTransparency = 1
+                    img.Image                  = item.Icon or ""
+                    img.ScaleType              = Enum.ScaleType.Fit
+                    img.Parent                 = card
+
+                    local nameLabel = MakeLabel(card,
+                        item.Name or "",
+                        UDim2.new(1, -6, 0, 18),
+                        UDim2.new(0, 3, 1, -22),
+                        C.TextMid, 10, Enum.Font.GothamBold,
+                        Enum.TextXAlignment.Center
+                    )
+                    nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+
+                    local checkBg = MakeFrame(card,
+                        UDim2.new(0, 22, 0, 22),
+                        UDim2.new(1, -26, 0, 4),
+                        C.Accent, 1
+                    )
+                    Corner(11, checkBg)
+                    local checkLabel = MakeLabel(checkBg, "✓",
+                        UDim2.new(1,0,1,0), nil,
+                        C.White, 12, Enum.Font.GothamBold,
+                        Enum.TextXAlignment.Center
+                    )
+                    checkLabel.TextYAlignment = Enum.TextYAlignment.Center
+
+                    -- Restaure l'état de sélection si la card était déjà sélectionnée
+                    local isSelected = globalSelected[item.Name] == true
+
+                    local function ApplyVisual(v)
+                        if v then
+                            Tween(cardStroke,  { Color = C.Accent, Thickness = 2 },    0.15)
+                            Tween(card,        { BackgroundColor3 = C.BgLighter },      0.15)
+                            Tween(checkBg,     { BackgroundTransparency = 0 },          0.15)
+                            Tween(nameLabel,   { TextColor3 = C.TextBright },           0.15)
+                        else
+                            Tween(cardStroke,  { Color = C.BorderDim, Thickness = 1 }, 0.15)
+                            Tween(card,        { BackgroundColor3 = C.BgMid },          0.15)
+                            Tween(checkBg,     { BackgroundTransparency = 1 },          0.15)
+                            Tween(nameLabel,   { TextColor3 = C.TextMid },              0.15)
+                        end
+                    end
+
+                    -- Applique immédiatement sans animation si déjà sélectionné
+                    if isSelected then
+                        cardStroke.Color           = C.Accent
+                        cardStroke.Thickness       = 2
+                        card.BackgroundColor3      = C.BgLighter
+                        checkBg.BackgroundTransparency = 0
+                        nameLabel.TextColor3       = C.TextBright
+                    end
+
+                    local clickZone = Instance.new("TextButton")
+                    clickZone.Size                 = UDim2.new(1,0,1,0)
+                    clickZone.BackgroundTransparency = 1
+                    clickZone.Text                 = ""
+                    clickZone.Parent               = card
+
+                    clickZone.MouseEnter:Connect(function()
+                        if not isSelected then
+                            Tween(card,       { BackgroundColor3 = C.BgLight }, 0.12)
+                            Tween(cardStroke, { Color = C.AccentGlow },         0.12)
+                        end
+                    end)
+                    clickZone.MouseLeave:Connect(function()
+                        if not isSelected then
+                            Tween(card,       { BackgroundColor3 = C.BgMid },   0.12)
+                            Tween(cardStroke, { Color = C.BorderDim },          0.12)
+                        end
+                    end)
+                    clickZone.MouseButton1Click:Connect(function()
+                        isSelected = not isSelected
+                        globalSelected[item.Name] = isSelected or nil
+                        ApplyVisual(isSelected)
+                        callback(globalSelected)
+                    end)
+                end
+
+                RefreshCanvas()
+            end
+
+            -- Peuple le dropdown
+            for idx, label in ipairs(groupLabels) do
+                local optBtn = Instance.new("TextButton")
+                optBtn.Size                   = UDim2.new(1, 0, 0, 28)
+                optBtn.BackgroundTransparency = 1
+                optBtn.BorderSizePixel        = 0
+                optBtn.Text                   = label
+                optBtn.TextColor3             = C.TextMid
+                optBtn.TextSize               = 12
+                optBtn.Font                   = Enum.Font.Gotham
+                optBtn.ZIndex                 = 61
+                optBtn.LayoutOrder            = idx
+                optBtn.Parent                 = dropList
+
+                optBtn.MouseEnter:Connect(function()
+                    Tween(optBtn, { TextColor3 = C.TextBright }, 0.1)
+                    optBtn.BackgroundColor3       = C.BgLight
+                    optBtn.BackgroundTransparency = 0
+                end)
+                optBtn.MouseLeave:Connect(function()
+                    Tween(optBtn, { TextColor3 = C.TextMid }, 0.1)
+                    optBtn.BackgroundTransparency = 1
+                end)
+                optBtn.MouseButton1Click:Connect(function()
+                    currentGroup  = label
+                    selLabel.Text = label
+                    CloseDropdown()
+                    BuildGrid(label)
+                end)
+            end
+
+            -- Ouvrir/fermer le dropdown
+            local dropClickZone = Instance.new("TextButton")
+            dropClickZone.Size                 = UDim2.new(1, 0, 0, 34)
+            dropClickZone.BackgroundTransparency = 1
+            dropClickZone.Text                 = ""
+            dropClickZone.Parent               = dropBg
+
+            dropClickZone.MouseButton1Click:Connect(function()
+                dropOpen = not dropOpen
+                if dropOpen then
+                    UpdateDropPos()
+                    dropList.Visible = true
+                    dropArrow.Text   = "▴"
+                else
+                    CloseDropdown()
+                end
+            end)
+
+            -- Fermeture sur clic extérieur
+            UserInputService.InputBegan:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1 and dropOpen then
+                    local mp       = UserInputService:GetMouseLocation()
+                    local bPos     = dropBg.AbsolutePosition
+                    local bSize    = dropBg.AbsoluteSize
+                    local dPos     = dropList.AbsolutePosition
+                    local dSize    = dropList.AbsoluteSize
+                    local inBtn    = mp.X >= bPos.X and mp.X <= bPos.X + bSize.X and mp.Y >= bPos.Y and mp.Y <= bPos.Y + bSize.Y
+                    local inDrop   = mp.X >= dPos.X and mp.X <= dPos.X + dSize.X and mp.Y >= dPos.Y and mp.Y <= dPos.Y + dSize.Y
+                    if not inBtn and not inDrop then CloseDropdown() end
+                end
+            end)
+
+            -- Construction initiale
+            BuildGrid(currentGroup)
+
+            return {
+                GetSelected = function()
+                    return globalSelected
+                end,
+                SelectAll = function(_, groupLabel)
+                    local grp = groupIndex[groupLabel or currentGroup]
+                    if not grp then return end
+                    for _, item in ipairs(grp.Items) do
+                        globalSelected[item.Name] = true
+                    end
+                    BuildGrid(currentGroup)
+                    callback(globalSelected)
+                end,
+                DeselectAll = function(_)
+                    globalSelected = {}
+                    BuildGrid(currentGroup)
+                    callback(globalSelected)
+                end,
+            }
+        end
+
+        -- ── MULTI TOGGLE ─────────────────────────────────────────────────
+        --  Liste de toggles indépendants
+        --  Callback reçoit { ["Option1"] = true, ... }
+        -- ─────────────────────────────────────────────────────────────────
         function Tab:AddMultiToggle(cfg)
             cfg = cfg or {}
             local options  = cfg.Options  or {}
@@ -1755,6 +2326,8 @@ function VoidUI:CreateWindow(cfg)
             }
         end
 
+        -- ── CLEAR — vide tout le contenu de l'onglet ──────────────────────
+        --  Utile pour repeupler dynamiquement (ex: liste d'items qui change)
         function Tab:Clear()
             for _, child in ipairs(scrollFrame:GetChildren()) do
                 if child:IsA("Frame") or child:IsA("TextButton") then
@@ -1765,13 +2338,22 @@ function VoidUI:CreateWindow(cfg)
         end
 
         return Tab
-    end
+    end -- AddTab
 
     return Window
-end
+end -- CreateWindow
+
 
 -- ════════════════════════════════════════════════════════════════════════════
 --  BOUTON FLOTTANT DRAGGABLE
+--  Bouton indépendant de la fenêtre, toujours visible, draggable
+--  Peut afficher une icône (rbxassetid) ou du texte
+--
+--  cfg.Icon     = "rbxassetid://..."  (optionnel)
+--  cfg.Text     = "Farm"              (optionnel, utilisé si pas d'icône)
+--  cfg.Position = UDim2.new(...)      (position initiale)
+--  cfg.Size     = UDim2.new(0,52,0,52)(optionnel, défaut 52x52)
+--  cfg.Callback = function() end      (appelé au clic)
 -- ════════════════════════════════════════════════════════════════════════════
 function VoidUI:CreateFloatingButton(cfg)
     cfg = cfg or {}
@@ -1782,6 +2364,7 @@ function VoidUI:CreateFloatingButton(cfg)
     local callback = cfg.Callback or function() end
     local hasIcon  = icon ~= ""
 
+    -- ScreenGui dédié pour rester au-dessus de tout
     local sg = Instance.new("ScreenGui")
     sg.Name           = "VoidUI_FloatBtn_" .. (hasIcon and "img" or text)
     sg.ResetOnSpawn   = false
@@ -1790,6 +2373,7 @@ function VoidUI:CreateFloatingButton(cfg)
     local ok = pcall(function() sg.Parent = game:GetService("CoreGui") end)
     if not ok then sg.Parent = Players.LocalPlayer:WaitForChild("PlayerGui") end
 
+    -- Bouton principal
     local btn = Instance.new("TextButton")
     btn.Size             = btnSize
     btn.Position         = pos
@@ -1800,10 +2384,14 @@ function VoidUI:CreateFloatingButton(cfg)
     btn.Parent           = sg
     Corner(14, btn)
 
+    -- Contour noir épais (effet "sticker")
     local outerStroke = Stroke(4, C.Black, btn)
+
+    -- Contour violet intérieur par-dessus
     local innerStroke = Stroke(1.5, C.Accent, btn)
 
     if hasIcon then
+        -- Mode image
         local img = Instance.new("ImageLabel")
         img.Size                   = UDim2.new(0.72, 0, 0.72, 0)
         img.Position               = UDim2.new(0.14, 0, 0.14, 0)
@@ -1813,6 +2401,7 @@ function VoidUI:CreateFloatingButton(cfg)
         img.ZIndex                 = 11
         img.Parent                 = btn
     else
+        -- Mode texte
         local lbl = Instance.new("TextLabel")
         lbl.Size                   = UDim2.new(1, -8, 1, -8)
         lbl.Position               = UDim2.new(0, 4, 0, 4)
@@ -1826,6 +2415,7 @@ function VoidUI:CreateFloatingButton(cfg)
         lbl.Parent                 = btn
     end
 
+    -- Hover / press animations
     btn.MouseEnter:Connect(function()
         Tween(btn, { BackgroundColor3 = C.BgLight }, 0.12)
         Tween(innerStroke, { Color = C.AccentGlow }, 0.12)
@@ -1841,6 +2431,7 @@ function VoidUI:CreateFloatingButton(cfg)
         Tween(btn, { BackgroundColor3 = C.BgMid }, 0.12)
     end)
 
+    -- Drag + clic (on différencie drag et clic via distance parcourue)
     local dragging  = false
     local dragStart = nil
     local startPos  = nil
@@ -1858,13 +2449,17 @@ function VoidUI:CreateFloatingButton(cfg)
     btn.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = false
-            if not moved then callback() end
+            -- Si pas de mouvement significatif => c'est un clic
+            if not moved then
+                callback()
+            end
         end
     end)
 
     UserInputService.InputChanged:Connect(function(input)
         if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
             local delta = input.Position - dragStart
+            -- On considère que c'est un drag seulement si on bouge de +4px
             if math.abs(delta.X) > 4 or math.abs(delta.Y) > 4 then
                 moved = true
             end
@@ -1877,16 +2472,36 @@ function VoidUI:CreateFloatingButton(cfg)
         end
     end)
 
+    -- Retourne un objet pour contrôler le bouton depuis le script
     return {
-        SetIcon    = function(_, id) local img = btn:FindFirstChildOfClass("ImageLabel") if img then img.Image = id end end,
-        SetText    = function(_, v)  local lbl = btn:FindFirstChildOfClass("TextLabel")  if lbl then lbl.Text  = v end end,
+        -- Changer l'icône après injection
+        SetIcon = function(_, id)
+            local img = btn:FindFirstChildOfClass("ImageLabel")
+            if img then img.Image = id end
+        end,
+        -- Changer le texte après injection
+        SetText = function(_, v)
+            local lbl = btn:FindFirstChildOfClass("TextLabel")
+            if lbl then lbl.Text = v end
+        end,
+        -- Afficher / cacher
         SetVisible = function(_, v) btn.Visible = v end,
-        Destroy    = function(_) sg:Destroy() end,
+        -- Détruire
+        Destroy = function(_) sg:Destroy() end,
     }
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
 --  OVERLAY D'INFORMATIONS
+--  Widget flottant draggable affichant du texte et/ou des images
+--  Mise à jour en temps réel via SetText / SetImage
+--
+--  cfg.Position = UDim2.new(...)
+--  cfg.Items = {
+--      { Type = "image", Icon = "rbxassetid://...", Id = "myimg" },
+--      { Type = "text",  Text = "HP : 100",         Id = "hp"    },
+--      { Type = "separator" },
+--  }
 -- ════════════════════════════════════════════════════════════════════════════
 function VoidUI:CreateOverlay(cfg)
     cfg = cfg or {}
@@ -1894,7 +2509,8 @@ function VoidUI:CreateOverlay(cfg)
     local pos      = cfg.Position or UDim2.new(0, 20, 0, 120)
     local minWidth = cfg.Width    or 160
 
-    local totalH = 12
+    -- Calcule la hauteur totale selon les items
+    local totalH = 12  -- padding top+bottom
     for _, item in ipairs(items) do
         if item.Type == "text"      then totalH = totalH + 22
         elseif item.Type == "image" then totalH = totalH + 50
@@ -1902,6 +2518,7 @@ function VoidUI:CreateOverlay(cfg)
         end
     end
 
+    -- ScreenGui dédié
     local sg = Instance.new("ScreenGui")
     sg.Name           = "VoidUI_Overlay"
     sg.ResetOnSpawn   = false
@@ -1910,21 +2527,25 @@ function VoidUI:CreateOverlay(cfg)
     local ok = pcall(function() sg.Parent = game:GetService("CoreGui") end)
     if not ok then sg.Parent = Players.LocalPlayer:WaitForChild("PlayerGui") end
 
+    -- Conteneur principal
     local container = MakeFrame(sg,
         UDim2.new(0, minWidth, 0, totalH),
         pos,
         C.BgMid, 0
     )
     Corner(10, container)
+    -- Contour noir épais + contour violet (même style que floating button)
     Stroke(4, C.Black, container)
     Stroke(1.5, C.Accent, container)
 
+    -- Layout vertical automatique
     local layout = Instance.new("UIListLayout")
     layout.SortOrder = Enum.SortOrder.LayoutOrder
     layout.Padding   = UDim.new(0, 4)
     layout.Parent    = container
     Pad(6, 6, 8, 8, container)
 
+    -- Drag via le container entier
     local dragging  = false
     local dragStart = nil
     local startPos  = nil
@@ -1951,6 +2572,7 @@ function VoidUI:CreateOverlay(cfg)
         end
     end)
 
+    -- Table pour retrouver les éléments par Id
     local elements = {}
     local order    = 0
 
@@ -1958,18 +2580,24 @@ function VoidUI:CreateOverlay(cfg)
         order = order + 1
 
         if item.Type == "text" then
+            -- Ligne de texte
             local lbl = MakeLabel(container,
                 item.Text or "",
-                UDim2.new(1, 0, 0, 20), nil,
+                UDim2.new(1, 0, 0, 20),
+                nil,
                 item.Color or C.TextBright,
                 item.TextSize or 12,
                 item.Bold and Enum.Font.GothamBold or Enum.Font.Gotham
             )
-            lbl.LayoutOrder    = order
+            lbl.LayoutOrder = order
             lbl.TextXAlignment = item.Align or Enum.TextXAlignment.Left
-            if item.Id then elements[item.Id] = lbl end
+
+            if item.Id then
+                elements[item.Id] = lbl
+            end
 
         elseif item.Type == "image" then
+            -- Image statique
             local img = Instance.new("ImageLabel")
             img.Size                   = UDim2.new(1, 0, 0, item.Height or 44)
             img.BackgroundTransparency = 1
@@ -1977,31 +2605,129 @@ function VoidUI:CreateOverlay(cfg)
             img.ScaleType              = Enum.ScaleType.Fit
             img.LayoutOrder            = order
             img.Parent                 = container
-            if item.Id then elements[item.Id] = img end
+
+            if item.Id then
+                elements[item.Id] = img
+            end
+
+        elseif item.Type == "imagebutton" then
+            -- Bouton cliquable avec image (+ texte optionnel en dessous)
+            local btnH  = (item.Height or 44) + (item.Label and 20 or 0)
+            local ibWrap = MakeFrame(container,
+                UDim2.new(1, 0, 0, btnH),
+                nil, C.Black, 1
+            )
+            ibWrap.LayoutOrder = order
+
+            local ibBtn = Instance.new("TextButton")
+            ibBtn.Size             = UDim2.new(1, 0, 0, item.Height or 44)
+            ibBtn.BackgroundColor3 = C.BgLight
+            ibBtn.BorderSizePixel  = 0
+            ibBtn.Text             = ""
+            ibBtn.ZIndex           = 5
+            ibBtn.Parent           = ibWrap
+            Corner(8, ibBtn)
+            Stroke(1, C.BorderDim, ibBtn)
+
+            local ibImg = Instance.new("ImageLabel")
+            ibImg.Size                   = UDim2.new(0.7, 0, 0.8, 0)
+            ibImg.Position               = UDim2.new(0.15, 0, 0.1, 0)
+            ibImg.BackgroundTransparency = 1
+            ibImg.Image                  = item.Icon or ""
+            ibImg.ScaleType              = Enum.ScaleType.Fit
+            ibImg.ZIndex                 = 6
+            ibImg.Parent                 = ibBtn
+
+            -- Label optionnel sous l'image
+            if item.Label then
+                MakeLabel(ibWrap,
+                    item.Label,
+                    UDim2.new(1, 0, 0, 18),
+                    UDim2.new(0, 0, 0, item.Height or 44),
+                    item.Color or C.TextMid,
+                    10, Enum.Font.GothamBold,
+                    Enum.TextXAlignment.Center
+                )
+            end
+
+            -- Hover / press
+            ibBtn.MouseEnter:Connect(function()
+                Tween(ibBtn, { BackgroundColor3 = C.BgLighter }, 0.1)
+                Tween(ibImg, { ImageTransparency = 0.15 }, 0.1)
+            end)
+            ibBtn.MouseLeave:Connect(function()
+                Tween(ibBtn, { BackgroundColor3 = C.BgLight }, 0.1)
+                Tween(ibImg, { ImageTransparency = 0 }, 0.1)
+            end)
+            ibBtn.MouseButton1Down:Connect(function()
+                Tween(ibBtn, { BackgroundColor3 = C.AccentSoft }, 0.08)
+            end)
+            ibBtn.MouseButton1Up:Connect(function()
+                Tween(ibBtn, { BackgroundColor3 = C.BgLight }, 0.1)
+            end)
+            ibBtn.MouseButton1Click:Connect(function()
+                if item.Callback then item.Callback() end
+            end)
+
+            if item.Id then
+                -- On stocke ibBtn pour pouvoir changer l'icône / label via SetImage
+                elements[item.Id] = ibImg
+            end
 
         elseif item.Type == "separator" then
-            local sep = MakeFrame(container, UDim2.new(1, 0, 0, 1), nil, C.White, 0)
+            -- Ligne de séparation
+            local sep = MakeFrame(container,
+                UDim2.new(1, 0, 0, 1),
+                nil, C.White, 0
+            )
             sep.LayoutOrder = order
             Gradient(C.Accent, C.AccentPink, sep, 0)
         end
     end
 
+    -- Redimensionne le container si le contenu change de taille
     layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        container.Size = UDim2.new(0, minWidth, 0, layout.AbsoluteContentSize.Y + 14)
+        container.Size = UDim2.new(0, minWidth, 0,
+            layout.AbsoluteContentSize.Y + 14
+        )
     end)
 
+    -- Retourne un objet pour contrôler l'overlay depuis le script
     return {
-        SetText    = function(_, id, value) local el = elements[id] if el and el:IsA("TextLabel")  then el.Text             = tostring(value) end end,
-        SetImage   = function(_, id, rbx)   local el = elements[id] if el and el:IsA("ImageLabel") then el.Image            = rbx             end end,
-        SetColor   = function(_, id, color) local el = elements[id] if el and el:IsA("TextLabel")  then el.TextColor3       = color           end end,
+        -- Met à jour un texte par son Id
+        SetText = function(_, id, value)
+            local el = elements[id]
+            if el and el:IsA("TextLabel") then
+                el.Text = tostring(value)
+            end
+        end,
+        -- Met à jour une image par son Id
+        SetImage = function(_, id, rbxassetid)
+            local el = elements[id]
+            if el and el:IsA("ImageLabel") then
+                el.Image = rbxassetid
+            end
+        end,
+        -- Change la couleur d'un texte par son Id
+        SetColor = function(_, id, color)
+            local el = elements[id]
+            if el and el:IsA("TextLabel") then
+                el.TextColor3 = color
+            end
+        end,
+        -- Afficher / cacher l'overlay
         SetVisible = function(_, v) container.Visible = v end,
-        Destroy    = function(_) sg:Destroy() end,
+        -- Détruire
+        Destroy = function(_) sg:Destroy() end,
     }
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  UTILITAIRES
+--  QUALITÉ DE VIE — fonctions globales utilitaires
 -- ════════════════════════════════════════════════════════════════════════════
+
+-- Détruit toutes les UI VoidUI créées dans CoreGui et PlayerGui
+-- Utile pour re-injecter proprement sans résidus
 function VoidUI:DestroyAll()
     local function cleanIn(parent)
         for _, child in ipairs(parent:GetChildren()) do
