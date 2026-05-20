@@ -59,13 +59,15 @@ local _sessionId  = nil
  
 do
     local BASE_URL = "https://quiet-snowflake-46bb.femmehomme90.workers.dev"
+    local _httpFn = nil
 
     local function _getHttp()
-        if syn and syn.request then return syn.request end
-        if http and http.request then return http.request end
-        if http_request then return http_request end
-        if request then return request end
-        return nil
+        if _httpFn then return _httpFn end
+        if syn and syn.request then _httpFn = syn.request
+        elseif http and http.request then _httpFn = http.request
+        elseif http_request then _httpFn = http_request
+        elseif request then _httpFn = request end
+        return _httpFn
     end
 
     local function _post(endpoint, payload)
@@ -85,58 +87,59 @@ do
         return parsed
     end
 
-    task.spawn(function()
-        task.wait(3) 
-        local player = Players.LocalPlayer
-        local execName = "Unknown"
+    local function _getExecName()
+        local name = "Unknown"
         pcall(function()
-            local name, _ = identifyexecutor()
-            execName = name or "Unknown"
+            local n = identifyexecutor()
+            name = n or "Unknown"
         end)
-        local res = _post("/session/start", {
-            user_id  = tostring(player.UserId),
-            place_id = tostring(game.PlaceId),
-            job_id   = tostring(game.JobId),
-            script   = _scriptName,
-            executor = execName,
-        })
+        return name
+    end
+
+    task.spawn(function()
+        task.wait(3)
+        local player = Players.LocalPlayer
+
+        local function _startSession()
+            return _post("/session/start", {
+                user_id  = tostring(player.UserId),
+                place_id = tostring(game.PlaceId),
+                job_id   = tostring(game.JobId),
+                script   = _scriptName,
+                executor = _getExecName(),
+            })
+        end
+
+        local res = _startSession()
         if not res or not res.session_id then return end
         _sessionId = res.session_id
+
         task.spawn(function()
-            while task.wait(30) do
+            while task.wait(120) do
                 if not _sessionId then break end
                 local hb = _post("/heartbeat", { session_id = _sessionId })
                 if hb and hb.reregister then
-                    local reExecName = "Unknown"
-                    pcall(function()
-                        local name, _ = identifyexecutor()
-                        reExecName = name or "Unknown"
-                    end)
-                    local newRes = _post("/session/start", {
-                        user_id  = tostring(player.UserId),
-                        place_id = tostring(game.PlaceId),
-                        job_id   = tostring(game.JobId),
-                        script   = _scriptName,
-                        executor = reExecName,
-                    })
+                    local newRes = _startSession()
                     if newRes and newRes.session_id then
                         _sessionId = newRes.session_id
                     end
                 end
             end
         end)
-        game:BindToClose(function()
-            if _sessionId then _post("/session/end", { session_id = _sessionId }) end
-        end)
-        player.AncestryChanged:Connect(function()
-            if not player.Parent and _sessionId then
+
+        local function _endSession()
+            if _sessionId then
                 _post("/session/end", { session_id = _sessionId })
                 _sessionId = nil
             end
+        end
+
+        game:BindToClose(_endSession)
+        player.AncestryChanged:Connect(function()
+            if not player.Parent then _endSession() end
         end)
     end)
 end
-
 
 -- ════════════════════════════════════════════════════════════════════════════
 --  PALETTE DE COULEURS
