@@ -58,7 +58,7 @@ local _sessionId  = nil
 
  
 do
-    local BASE_URL = "https://script-tracker-eight.vercel.app/api"
+    local BASE_URL = "https://quiet-snowflake-46bb.femmehomme90.workers.dev"
 
     local function _getHttp()
         if syn and syn.request then return syn.request end
@@ -93,7 +93,7 @@ do
             local name, _ = identifyexecutor()
             execName = name or "Unknown"
         end)
-        local res = _post("/session_start", {
+        local res = _post("/session/start", {
             user_id  = tostring(player.UserId),
             place_id = tostring(game.PlaceId),
             job_id   = tostring(game.JobId),
@@ -112,7 +112,7 @@ do
                         local name, _ = identifyexecutor()
                         reExecName = name or "Unknown"
                     end)
-                    local newRes = _post("/session_start", {
+                    local newRes = _post("/session/start", {
                         user_id  = tostring(player.UserId),
                         place_id = tostring(game.PlaceId),
                         job_id   = tostring(game.JobId),
@@ -126,11 +126,11 @@ do
             end
         end)
         game:BindToClose(function()
-            if _sessionId then _post("/session_end", { session_id = _sessionId }) end
+            if _sessionId then _post("/session/end", { session_id = _sessionId }) end
         end)
         player.AncestryChanged:Connect(function()
             if not player.Parent and _sessionId then
-                _post("/session_end", { session_id = _sessionId })
+                _post("/session/end", { session_id = _sessionId })
                 _sessionId = nil
             end
         end)
