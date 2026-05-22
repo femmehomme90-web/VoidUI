@@ -2734,56 +2734,55 @@ function VoidUI:ShowCredit()
     ScreenGui.Name = "VoidUI_Credit"
     ScreenGui.ResetOnSpawn = false
     ScreenGui.DisplayOrder = 9999
-
     local ok = pcall(function() ScreenGui.Parent = game:GetService("CoreGui") end)
     if not ok then ScreenGui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui") end
 
     local bg = Instance.new("Frame")
-    bg.Size = UDim2.new(0, 420, 0, 230)
-    bg.Position = UDim2.new(0.5, -210, 0.5, -115)
+    bg.Size = UDim2.new(0, 500, 0, 280)
+    bg.Position = UDim2.new(0.5, -250, 0.5, -140)
     bg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
     bg.BorderSizePixel = 1
     bg.Parent = ScreenGui
 
     local text = Instance.new("TextLabel")
-    text.Size = UDim2.new(1, -20, 0, 90)
+    text.Size = UDim2.new(1, -20, 0, 110)
     text.Position = UDim2.new(0, 10, 0, 10)
     text.BackgroundTransparency = 1
     text.TextColor3 = Color3.fromRGB(255, 255, 255)
     text.TextWrapped = true
     text.Font = Enum.Font.GothamBold
-    text.TextSize = 14
+    text.TextSize = 16
     text.TextYAlignment = Enum.TextYAlignment.Top
-    text.Text = "Script fait par AKkiwi\n\n⚠️ Ce script est KEYLESS et GRATUIT.\nSi on vous a demandé une clé ou un key system,\nvous vous êtes fait SCAM.\nRejoignez le Discord pour les mises à jour."
+    text.Text = "Script made by AKkiwi\n\n⚠️ All my scripts are FREE and KEYLESS.\nIf you were asked for a key or a key system,\nyou got SCAMMED.\nGet all my scripts for free on Discord,\nRscripts and RobloxScript profiles."
     text.Parent = bg
 
     local discordBtn = Instance.new("TextButton")
-    discordBtn.Size = UDim2.new(1, -20, 0, 30)
-    discordBtn.Position = UDim2.new(0, 10, 0, 115)
+    discordBtn.Size = UDim2.new(1, -20, 0, 38)
+    discordBtn.Position = UDim2.new(0, 10, 0, 135)
     discordBtn.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
     discordBtn.TextColor3 = Color3.fromRGB(100, 150, 255)
     discordBtn.Font = Enum.Font.Gotham
-    discordBtn.TextSize = 13
+    discordBtn.TextSize = 15
     discordBtn.BorderSizePixel = 0
-    discordBtn.Text = "🔗 discord.gg/ztnxx5FJk  (clic = copier)"
+    discordBtn.Text = "🔗 discord.gg/ztnxx5FJk  (click to copy)"
     discordBtn.Parent = bg
 
     discordBtn.MouseButton1Click:Connect(function()
         setclipboard("https://discord.gg/ztnxx5FJk")
-        discordBtn.Text = "✅ Lien copié !"
+        discordBtn.Text = "✅ Link copied!"
         task.wait(2)
-        discordBtn.Text = "🔗 discord.gg/ztnxx5FJk  (clic = copier)"
+        discordBtn.Text = "🔗 discord.gg/ztnxx5FJk  (click to copy)"
     end)
 
     local closeBtn = Instance.new("TextButton")
-    closeBtn.Size = UDim2.new(1, -20, 0, 32)
-    closeBtn.Position = UDim2.new(0, 10, 0, 158)
+    closeBtn.Size = UDim2.new(1, -20, 0, 38)
+    closeBtn.Position = UDim2.new(0, 10, 0, 185)
     closeBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     closeBtn.Font = Enum.Font.GothamBold
-    closeBtn.TextSize = 13
+    closeBtn.TextSize = 15
     closeBtn.BorderSizePixel = 0
-    closeBtn.Text = "J'ai compris — Fermer"
+    closeBtn.Text = "Got it — Close"
     closeBtn.Parent = bg
 
     closeBtn.MouseButton1Click:Connect(function()
