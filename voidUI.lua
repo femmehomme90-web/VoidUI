@@ -2729,6 +2729,68 @@ end
 --  QUALITÉ DE VIE — fonctions globales utilitaires
 -- ════════════════════════════════════════════════════════════════════════════
 
+function VoidUI:ShowCredit()
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "VoidUI_Credit"
+    ScreenGui.ResetOnSpawn = false
+    ScreenGui.DisplayOrder = 9999
+
+    local ok = pcall(function() ScreenGui.Parent = game:GetService("CoreGui") end)
+    if not ok then ScreenGui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui") end
+
+    local bg = Instance.new("Frame")
+    bg.Size = UDim2.new(0, 420, 0, 230)
+    bg.Position = UDim2.new(0.5, -210, 0.5, -115)
+    bg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    bg.BorderSizePixel = 1
+    bg.Parent = ScreenGui
+
+    local text = Instance.new("TextLabel")
+    text.Size = UDim2.new(1, -20, 0, 90)
+    text.Position = UDim2.new(0, 10, 0, 10)
+    text.BackgroundTransparency = 1
+    text.TextColor3 = Color3.fromRGB(255, 255, 255)
+    text.TextWrapped = true
+    text.Font = Enum.Font.GothamBold
+    text.TextSize = 14
+    text.TextYAlignment = Enum.TextYAlignment.Top
+    text.Text = "Script fait par AKkiwi\n\n⚠️ Ce script est KEYLESS et GRATUIT.\nSi on vous a demandé une clé ou un key system,\nvous vous êtes fait SCAM.\nRejoignez le Discord pour les mises à jour."
+    text.Parent = bg
+
+    local discordBtn = Instance.new("TextButton")
+    discordBtn.Size = UDim2.new(1, -20, 0, 30)
+    discordBtn.Position = UDim2.new(0, 10, 0, 115)
+    discordBtn.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    discordBtn.TextColor3 = Color3.fromRGB(100, 150, 255)
+    discordBtn.Font = Enum.Font.Gotham
+    discordBtn.TextSize = 13
+    discordBtn.BorderSizePixel = 0
+    discordBtn.Text = "🔗 discord.gg/ztnxx5FJk  (clic = copier)"
+    discordBtn.Parent = bg
+
+    discordBtn.MouseButton1Click:Connect(function()
+        setclipboard("https://discord.gg/ztnxx5FJk")
+        discordBtn.Text = "✅ Lien copié !"
+        task.wait(2)
+        discordBtn.Text = "🔗 discord.gg/ztnxx5FJk  (clic = copier)"
+    end)
+
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(1, -20, 0, 32)
+    closeBtn.Position = UDim2.new(0, 10, 0, 158)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.TextSize = 13
+    closeBtn.BorderSizePixel = 0
+    closeBtn.Text = "J'ai compris — Fermer"
+    closeBtn.Parent = bg
+
+    closeBtn.MouseButton1Click:Connect(function()
+        ScreenGui:Destroy()
+    end)
+end
+
 -- Détruit toutes les UI VoidUI créées dans CoreGui et PlayerGui
 -- Utile pour re-injecter proprement sans résidus
 function VoidUI:DestroyAll()
@@ -2742,5 +2804,7 @@ function VoidUI:DestroyAll()
     pcall(function() cleanIn(game:GetService("CoreGui")) end)
     pcall(function() cleanIn(Players.LocalPlayer.PlayerGui) end)
 end
+
+
 
 return VoidUI
