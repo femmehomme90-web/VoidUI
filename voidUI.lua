@@ -2738,14 +2738,14 @@ function VoidUI:ShowCredit(onClose)
     if not ok then ScreenGui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui") end
 
     local bg = Instance.new("Frame")
-    bg.Size = UDim2.new(0, 500, 0, 330)
-    bg.Position = UDim2.new(0.5, -250, 0.5, -165)
+    bg.Size = UDim2.new(0, 500, 0, 290)
+    bg.Position = UDim2.new(0.5, -250, 0.5, -145)
     bg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
     bg.BorderSizePixel = 1
     bg.Parent = ScreenGui
 
     local text = Instance.new("TextLabel")
-    text.Size = UDim2.new(1, -20, 0, 110)
+    text.Size = UDim2.new(1, -20, 0, 120)
     text.Position = UDim2.new(0, 10, 0, 10)
     text.BackgroundTransparency = 1
     text.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -2753,46 +2753,29 @@ function VoidUI:ShowCredit(onClose)
     text.Font = Enum.Font.GothamBold
     text.TextSize = 16
     text.TextYAlignment = Enum.TextYAlignment.Top
-    text.Text = "Script made by AKkiwi\n\n⚠️ All my scripts are FREE and KEYLESS.\nIf you were asked for a key or a key system,\nyou got SCAMMED.\nGet all my scripts for free on Discord,\nRscripts and RobloxScript profiles."
+    text.Text = "Script made by AKkiwi\n\n⚠️ All my scripts are FREE and KEYLESS.\nIf you were asked for a key or a key system,\nyou got SCAMMED.\n\nFind all my scripts on RScripts — and if you\nenjoy them, please like and follow my profile!"
     text.Parent = bg
-
-    local discordBtn = Instance.new("TextButton")
-    discordBtn.Size = UDim2.new(1, -20, 0, 38)
-    discordBtn.Position = UDim2.new(0, 10, 0, 130)
-    discordBtn.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-    discordBtn.TextColor3 = Color3.fromRGB(100, 150, 255)
-    discordBtn.Font = Enum.Font.Gotham
-    discordBtn.TextSize = 15
-    discordBtn.BorderSizePixel = 0
-    discordBtn.Text = "🔗 discord.gg/ztnxx5FJk  (click to copy)"
-    discordBtn.Parent = bg
-    discordBtn.MouseButton1Click:Connect(function()
-        setclipboard("https://discord.gg/ztnxx5FJk")
-        discordBtn.Text = "✅ Link copied!"
-        task.wait(2)
-        discordBtn.Text = "🔗 discord.gg/ztnxx5FJk  (click to copy)"
-    end)
 
     local rscriptsBtn = Instance.new("TextButton")
     rscriptsBtn.Size = UDim2.new(1, -20, 0, 38)
-    rscriptsBtn.Position = UDim2.new(0, 10, 0, 178)
+    rscriptsBtn.Position = UDim2.new(0, 10, 0, 195)
     rscriptsBtn.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
     rscriptsBtn.TextColor3 = Color3.fromRGB(100, 200, 100)
     rscriptsBtn.Font = Enum.Font.Gotham
     rscriptsBtn.TextSize = 15
     rscriptsBtn.BorderSizePixel = 0
-    rscriptsBtn.Text = "🌐 rscripts.net/@akkiwi — All my scripts (click to copy)"
+    rscriptsBtn.Text = "🌐 rscripts.net/@akkiwi  (click to copy)"
     rscriptsBtn.Parent = bg
     rscriptsBtn.MouseButton1Click:Connect(function()
         setclipboard("https://rscripts.net/@akkiwi")
         rscriptsBtn.Text = "✅ Link copied!"
         task.wait(2)
-        rscriptsBtn.Text = "🌐 rscripts.net/@akkiwi — All my scripts (click to copy)"
+        rscriptsBtn.Text = "🌐 rscripts.net/@akkiwi  (click to copy)"
     end)
 
     local closeBtn = Instance.new("TextButton")
     closeBtn.Size = UDim2.new(1, -20, 0, 38)
-    closeBtn.Position = UDim2.new(0, 10, 0, 276)
+    closeBtn.Position = UDim2.new(0, 10, 0, 243)
     closeBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     closeBtn.Font = Enum.Font.GothamBold
