@@ -1,0 +1,377 @@
+--[[
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                       VoidUI v3 — SCRIPT DE TEST                             ║
+║                                                                              ║
+║  Teste tous les composants pour vérifier le responsive mobile :              ║
+║    • CreateWindow (mode top + mode side)                                     ║
+║    • Toggle, Slider, Button, Dropdown, TextInput                             ║
+║    • Keybind, ColorPicker, ProgressBar, MultiToggle, Label                   ║
+║    • CardGrid, FilteredCardGrid                                              ║
+║    • Notify, FloatingButton, Overlay, ShowCredit                             ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+INSTRUCTIONS :
+  1. Héberge voidUI_v3_responsive.lua sur un host raw (GitHub Gist, pastebin
+     raw, raw.githubusercontent.com, etc.)
+  2. Remplace l'URL ci-dessous par ton URL raw
+  3. Exécute ce script dans ton executor
+
+  Pour tester en local sur PC, tu peux aussi remplacer le loadstring par :
+     local VoidUI = loadfile("voidUI_v3_responsive.lua")()
+]]
+
+-- ════════════════════════════════════════════════════════════════════════════
+--  CHARGEMENT DE LA LIB
+-- ════════════════════════════════════════════════════════════════════════════
+local URL = "https://raw.githubusercontent.com/USER/REPO/main/voidUI_v3_responsive.lua"
+
+local VoidUI = loadstring(game:HttpGet(URL))()
+
+-- Nettoyage de toute UI précédente (utile en re-injectant)
+VoidUI:DestroyAll()
+VoidUI:SetScriptName("VoidUI_Test")
+
+-- ════════════════════════════════════════════════════════════════════════════
+--  NOTIFICATION DE BIENVENUE
+-- ════════════════════════════════════════════════════════════════════════════
+VoidUI:Notify({
+    Title    = "VoidUI Test",
+    Message  = "Script de test chargé. Ouvre les onglets pour explorer.",
+    Type     = "success",
+    Duration = 4,
+})
+
+-- ════════════════════════════════════════════════════════════════════════════
+--  FENÊTRE PRINCIPALE
+-- ════════════════════════════════════════════════════════════════════════════
+local Win = VoidUI:CreateWindow({
+    Title       = "Test Suite",
+    Size        = UDim2.new(0, 580, 0, 440),
+    TabPosition = "top",   -- mets "side" pour tester le mode latéral
+    Icon        = "rbxassetid://7733964719",  -- icône optionnelle pour la pill
+})
+
+-- ════════════════════════════════════════════════════════════════════════════
+--  ONGLET 1 : COMPOSANTS DE BASE
+-- ════════════════════════════════════════════════════════════════════════════
+local Main = Win:AddTab("Main")
+
+Main:AddLabel("Section : Toggles & Sliders")
+
+Main:AddToggle({
+    Label    = "Auto Farm",
+    Default  = false,
+    Callback = function(v)
+        VoidUI:Notify({
+            Title    = "Auto Farm",
+            Message  = v and "Activé" or "Désactivé",
+            Type     = v and "success" or "info",
+            Duration = 2,
+        })
+    end,
+})
+
+Main:AddToggle({
+    Label    = "Auto Hatch",
+    Default  = true,
+    Callback = function(v) print("Auto Hatch:", v) end,
+})
+
+Main:AddSlider({
+    Label    = "Walk Speed",
+    Min      = 0,
+    Max      = 300,
+    Default  = 16,
+    Suffix   = " sps",
+    Callback = function(v)
+        local lp = game.Players.LocalPlayer
+        if lp.Character and lp.Character:FindFirstChildOfClass("Humanoid") then
+            lp.Character:FindFirstChildOfClass("Humanoid").WalkSpeed = v
+        end
+    end,
+})
+
+Main:AddSlider({
+    Label    = "Jump Power",
+    Min      = 0,
+    Max      = 500,
+    Default  = 50,
+    Callback = function(v) print("Jump:", v) end,
+})
+
+Main:AddLabel("Section : Actions")
+
+Main:AddButton({
+    Label    = "Téléport au spawn",
+    Callback = function()
+        local lp = game.Players.LocalPlayer
+        if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
+            lp.Character.HumanoidRootPart.CFrame = CFrame.new(0, 50, 0)
+        end
+        VoidUI:Notify({ Title = "Teleport", Message = "Au spawn !", Type = "info", Duration = 2 })
+    end,
+})
+
+Main:AddButton({
+    Label    = "Bouton gradient custom",
+    Colors   = { Color3.fromRGB(255, 80, 120), Color3.fromRGB(255, 180, 60) },
+    Callback = function()
+        VoidUI:Notify({ Title = "Boom", Message = "Bouton gradient cliqué", Type = "warning", Duration = 2 })
+    end,
+})
+
+Main:AddButton({
+    Label    = "Show credit",
+    Callback = function() VoidUI:ShowCredit() end,
+})
+
+-- ════════════════════════════════════════════════════════════════════════════
+--  ONGLET 2 : INPUTS
+-- ════════════════════════════════════════════════════════════════════════════
+local Inputs = Win:AddTab("Inputs")
+
+Inputs:AddLabel("Section : Saisie de texte")
+
+Inputs:AddTextInput({
+    Label       = "Pseudo",
+    Placeholder = "Ton pseudo...",
+    Callback    = function(v) print("Pseudo:", v) end,
+})
+
+Inputs:AddTextInput({
+    Label       = "URL Webhook",
+    Placeholder = "https://discord.com/api/...",
+    Callback    = function(v) print("Webhook:", v) end,
+})
+
+Inputs:AddLabel("Section : Choix")
+
+local dd = Inputs:AddDropdown({
+    Label    = "Mode farm",
+    Options  = { "Safe", "Fast", "YOLO", "AFK" },
+    Callback = function(v)
+        VoidUI:Notify({ Title = "Mode", Message = "Sélectionné : " .. v, Type = "info", Duration = 2 })
+    end,
+})
+
+Inputs:AddButton({
+    Label    = "Ajouter une option au dropdown",
+    Callback = function()
+        dd:SetOptions({ "Safe", "Fast", "YOLO", "AFK", "Ultra (nouveau)" })
+        VoidUI:Notify({ Title = "Dropdown", Message = "Option ajoutée", Type = "success", Duration = 2 })
+    end,
+})
+
+Inputs:AddKeybind({
+    Label    = "Toggle UI",
+    Default  = Enum.KeyCode.F,
+    Callback = function(k) print("Keybind appuyée :", k.Name) end,
+})
+
+Inputs:AddColorPicker({
+    Label    = "Couleur d'effet",
+    Default  = Color3.fromRGB(130, 80, 255),
+    Callback = function(c) print("Couleur :", c) end,
+})
+
+-- ════════════════════════════════════════════════════════════════════════════
+--  ONGLET 3 : AVANCÉ
+-- ════════════════════════════════════════════════════════════════════════════
+local Adv = Win:AddTab("Avancé")
+
+Adv:AddLabel("Section : Progression")
+
+local pb = Adv:AddProgressBar({
+    Label  = "XP",
+    Value  = 0,
+    Max    = 100,
+    Suffix = " / 100",
+})
+
+Adv:AddButton({
+    Label    = "Simuler progression XP",
+    Callback = function()
+        for i = 0, 100, 5 do
+            pb:SetValue(i)
+            task.wait(0.05)
+        end
+        VoidUI:Notify({ Title = "Level up", Message = "XP au max", Type = "success", Duration = 2 })
+    end,
+})
+
+Adv:AddLabel("Section : Multi-toggle")
+
+Adv:AddMultiToggle({
+    Label    = "Options de combat",
+    Options  = { "Auto-attack", "Auto-dodge", "Auto-heal", "Auto-revive", "Auto-loot" },
+    Callback = function(t)
+        local count = 0
+        for _ in pairs(t) do count = count + 1 end
+        print(count, "options actives")
+    end,
+})
+
+-- ════════════════════════════════════════════════════════════════════════════
+--  ONGLET 4 : CARDS (test grille — important pour le scroll mobile)
+-- ════════════════════════════════════════════════════════════════════════════
+local Cards = Win:AddTab("Cards")
+
+Cards:AddLabel("Section : Card Grid simple")
+
+Cards:AddCardGrid({
+    Items = {
+        { Name = "Common",    Icon = "rbxassetid://7733964719" },
+        { Name = "Uncommon",  Icon = "rbxassetid://7733964719" },
+        { Name = "Rare",      Icon = "rbxassetid://7733964719" },
+        { Name = "Epic",      Icon = "rbxassetid://7733964719" },
+        { Name = "Legendary", Icon = "rbxassetid://7733964719" },
+        { Name = "Mythic",    Icon = "rbxassetid://7733964719" },
+    },
+    Columns  = 3,
+    Callback = function(sel)
+        local list = {}
+        for n in pairs(sel) do table.insert(list, n) end
+        print("Cards sélectionnées :", table.concat(list, ", "))
+    end,
+})
+
+Cards:AddLabel("Section : Filtered Card Grid")
+
+local fcg = Cards:AddFilteredCardGrid({
+    Groups = {
+        { Label = "Common",   Items = {
+            { Name = "Egg 1", Icon = "rbxassetid://7733964719" },
+            { Name = "Egg 2", Icon = "rbxassetid://7733964719" },
+            { Name = "Egg 3", Icon = "rbxassetid://7733964719" },
+            { Name = "Egg 4", Icon = "rbxassetid://7733964719" },
+        }},
+        { Label = "Rare",     Items = {
+            { Name = "RareEgg 1", Icon = "rbxassetid://7733964719" },
+            { Name = "RareEgg 2", Icon = "rbxassetid://7733964719" },
+        }},
+        { Label = "Mythical", Items = {
+            { Name = "MythEgg",   Icon = "rbxassetid://7733964719" },
+        }},
+    },
+    Columns  = 4,
+    Callback = function(sel) print("Sélection filtrée :", sel) end,
+})
+
+Cards:AddButton({
+    Label    = "Tout sélectionner (groupe actuel)",
+    Callback = function() fcg:SelectAll() end,
+})
+Cards:AddButton({
+    Label    = "Tout désélectionner",
+    Callback = function() fcg:DeselectAll() end,
+})
+
+-- ════════════════════════════════════════════════════════════════════════════
+--  ONGLET 5 : SCROLL TEST (beaucoup de composants pour forcer le scroll)
+-- ════════════════════════════════════════════════════════════════════════════
+local Scroll = Win:AddTab("Scroll")
+
+Scroll:AddLabel("Test du scroll vertical (mobile)")
+
+for i = 1, 15 do
+    Scroll:AddToggle({
+        Label    = "Toggle #" .. i,
+        Default  = (i % 2 == 0),
+        Callback = function(v) print("Toggle", i, ":", v) end,
+    })
+end
+
+Scroll:AddLabel("Fin de la liste")
+Scroll:AddButton({
+    Label    = "Bouton tout en bas",
+    Callback = function()
+        VoidUI:Notify({ Title = "Bottom", Message = "T'as scrollé jusqu'en bas !", Type = "success", Duration = 3 })
+    end,
+})
+
+-- ════════════════════════════════════════════════════════════════════════════
+--  ONGLET 6 : MANY TABS (test scroll de la tab bar)
+--  On rajoute plusieurs onglets supplémentaires pour vérifier le scroll horizontal
+-- ════════════════════════════════════════════════════════════════════════════
+for i = 1, 6 do
+    local T = Win:AddTab("Tab " .. i)
+    T:AddLabel("Onglet de test #" .. i)
+    T:AddButton({
+        Label    = "Action #" .. i,
+        Callback = function() print("Onglet", i, "→ action") end,
+    })
+end
+
+-- ════════════════════════════════════════════════════════════════════════════
+--  BOUTON FLOTTANT (toujours visible, draggable)
+-- ════════════════════════════════════════════════════════════════════════════
+local floatBtn = VoidUI:CreateFloatingButton({
+    Text     = "Notif",
+    Position = UDim2.new(0, 20, 0.5, 0),
+    Size     = UDim2.new(0, 52, 0, 52),
+    Callback = function()
+        VoidUI:Notify({
+            Title    = "Bouton flottant",
+            Message  = "Tu as cliqué le bouton flottant !",
+            Type     = "info",
+            Duration = 2,
+        })
+    end,
+})
+
+-- ════════════════════════════════════════════════════════════════════════════
+--  OVERLAY D'INFOS (HUD)
+-- ════════════════════════════════════════════════════════════════════════════
+local overlay = VoidUI:CreateOverlay({
+    Position = UDim2.new(0, 20, 0, 120),
+    Width    = 180,
+    Items = {
+        { Type = "text", Text = "VoidUI HUD", Id = "title", Bold = true, Color = Color3.fromRGB(220, 80, 160) },
+        { Type = "separator" },
+        { Type = "text", Text = "FPS : --",   Id = "fps"  },
+        { Type = "text", Text = "Ping : --",  Id = "ping" },
+        { Type = "text", Text = "Time : --",  Id = "time" },
+    },
+})
+
+-- Mise à jour temps réel du HUD
+task.spawn(function()
+    local RunService = game:GetService("RunService")
+    local Stats      = game:GetService("Stats")
+    local lastTick   = tick()
+    local frames     = 0
+    local fps        = 0
+    RunService.RenderStepped:Connect(function()
+        frames = frames + 1
+        local now = tick()
+        if now - lastTick >= 1 then
+            fps      = frames
+            frames   = 0
+            lastTick = now
+        end
+    end)
+    while task.wait(0.5) do
+        overlay:SetText("fps", "FPS : " .. fps)
+        local ping = 0
+        pcall(function()
+            ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
+        end)
+        overlay:SetText("ping", "Ping : " .. ping .. " ms")
+        overlay:SetText("time", "Time : " .. os.date("%H:%M:%S"))
+    end
+end)
+
+-- ════════════════════════════════════════════════════════════════════════════
+--  NOTIFICATIONS EN RAFALE (test du stacking + animations sortie)
+-- ════════════════════════════════════════════════════════════════════════════
+task.delay(2, function()
+    VoidUI:Notify({ Title = "Info",    Message = "Notification de type info",    Type = "info",    Duration = 4 })
+    task.wait(0.4)
+    VoidUI:Notify({ Title = "Success", Message = "Notification de type success", Type = "success", Duration = 4 })
+    task.wait(0.4)
+    VoidUI:Notify({ Title = "Warning", Message = "Notification de type warning", Type = "warning", Duration = 4 })
+    task.wait(0.4)
+    VoidUI:Notify({ Title = "Error",   Message = "Notification de type error",   Type = "error",   Duration = 4 })
+end)
+
+print("[VoidUI Test] Script chargé. Touch/clic le bouton flottant à gauche, ouvre les onglets, scroll, minimise.")
