@@ -56,7 +56,7 @@ local HttpService      = game:GetService("HttpService")
 local _scriptName = "VoidUI"
 local _sessionId  = nil
 
-
+ 
 do
     local BASE_URL = "https://quiet-snowflake-46bb.femmehomme90.workers.dev"
     local _httpFn = nil
@@ -263,8 +263,7 @@ local function MakeDraggable(handle, frame)
     local dragStart, startPos
 
     handle.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging  = true
             dragStart = input.Position
             startPos  = frame.Position
@@ -272,17 +271,13 @@ local function MakeDraggable(handle, frame)
     end)
 
     handle.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = false
         end
     end)
 
     UserInputService.InputChanged:Connect(function(input)
-        if dragging and (
-            input.UserInputType == Enum.UserInputType.MouseMovement
-            or input.UserInputType == Enum.UserInputType.Touch
-        ) then
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
             local delta = input.Position - dragStart
             frame.Position = UDim2.new(
                 startPos.X.Scale, startPos.X.Offset + delta.X,
@@ -303,38 +298,6 @@ local function MakeAccentBar(parent)
     Corner(2, bar)
     Gradient(C.Accent, C.AccentPink, bar, 90)
     return bar
-end
-
--- ════════════════════════════════════════════════════════════════════════════
---  RESPONSIVE — scaling pour mobile / petits écrans
---  Seul le "chrome" de la fenêtre est scalé (barre de titre, tabs, pill...).
---  Les composants internes (toggles, sliders) gardent leur taille originale
---  et deviennent scrollables si ils dépassent.
--- ════════════════════════════════════════════════════════════════════════════
-local Responsive = {}
-do
-    local camera = workspace.CurrentCamera
-    local vp = camera.ViewportSize
-    if vp.X == 0 then
-        camera:GetPropertyChangedSignal("ViewportSize"):Wait()
-        vp = camera.ViewportSize
-    end
-
-    local isMobile = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
-    local REF_W, REF_H = 580, 440
-
-    local scale = 1
-    if isMobile then
-        scale = math.min(vp.X * 0.92 / REF_W, vp.Y * 0.92 / REF_H)
-        scale = math.max(0.38, math.min(scale, 1))
-    end
-
-    Responsive.scale    = scale
-    Responsive.isMobile = isMobile
-    Responsive.vp       = vp
-
-    function Responsive.px(v) return math.round(v * scale) end
-    function Responsive.fs(v) return math.max(8, math.round(v * scale)) end
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
@@ -364,12 +327,10 @@ do
         notifGui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
     end
 
-    -- Conteneur fixe en bas à droite (largeur scalée pour mobile)
-    local notifW   = Responsive.px(300)
-    local notifPad = Responsive.px(10)
+    -- Conteneur fixe en bas à droite
     local container = MakeFrame(notifGui,
-        UDim2.new(0, notifW, 1, 0),
-        UDim2.new(1, -(notifW + notifPad), 0, 0),
+        UDim2.new(0, 300, 1, 0),
+        UDim2.new(1, -310, 0, 0),
         C.Black, 1
     )
 
@@ -384,6 +345,14 @@ do
 
     function VoidUI:Notify(cfg)
         cfg = cfg or {}
+        local _tempSg = Instance.new("ScreenGui")
+        pcall(function() _tempSg.Parent = game:GetService("CoreGui") end)
+        local useMobileSizing = _tempSg.AbsoluteSize.X < 1024 and _tempSg.AbsoluteSize.Y < 768
+        _tempSg:Destroy()
+        local WIN_W       = 580
+        local WIN_H       = useMobileSizing and 280 or 440
+        local WIN_SIZE    = UDim2.new(0, WIN_W, 0, WIN_H)
+
         local title    = cfg.Title    or "VoidUI"
         local message  = cfg.Message  or ""
         local duration = cfg.Duration or 3
@@ -479,28 +448,9 @@ end
 function VoidUI:CreateWindow(cfg)
     cfg = cfg or {}
     local title       = cfg.Title       or "VoidUI"
+    local size        = WIN_SIZE
     local tabPosition = cfg.TabPosition or "top"   -- "top" ou "side"
     local pillIcon    = cfg.Icon        or ""       -- rbxassetid://... pour la pill
-
-    -- ── Calcul de la taille responsive de la fenêtre ──
-    local S     = Responsive.scale
-    local baseW = cfg.Size and cfg.Size.X.Offset or 580
-    local baseH = cfg.Size and cfg.Size.Y.Offset or 440
-    local sizeW = math.round(baseW * S)
-    local sizeH = math.round(baseH * S)
-    local size  = UDim2.new(0, sizeW, 0, sizeH)
-
-    -- Hauteurs scalées du "chrome" de la fenêtre
-    local topLineH = Responsive.px(2)
-    local titleH   = Responsive.px(40)
-    local sepH     = Responsive.px(1)
-    local tabBarH  = Responsive.px(34)
-
-    local titleY    = topLineH
-    local titleSepY = titleY + titleH
-    local tabBarY   = titleSepY + sepH
-    local tabSepY   = tabBarY + tabBarH
-    local contentY  = tabSepY + sepH + Responsive.px(1)
 
     -- ScreenGui
     local sg = Instance.new("ScreenGui")
@@ -518,8 +468,8 @@ function VoidUI:CreateWindow(cfg)
 
     -- ── Fenêtre principale ──
     local main = MakeFrame(sg,
-        size,
-        UDim2.new(0.5, -sizeW/2, 0.5, -sizeH/2),
+        WIN_SIZE,
+        UDim2.new(0.5, -WIN_W/2, 0.5, -WIN_H/2),
         C.BgDeep, 0
     )
     main.ClipsDescendants = false
@@ -529,7 +479,7 @@ function VoidUI:CreateWindow(cfg)
 
     -- Ligne gradient décorative tout en haut (violet → rose, 2px)
     local topLine = MakeFrame(main,
-        UDim2.new(1, 0, 0, topLineH),
+        UDim2.new(1, 0, 0, 2),
         UDim2.new(0, 0, 0, 0),
         C.White, 0
     )
@@ -537,34 +487,33 @@ function VoidUI:CreateWindow(cfg)
 
     -- ── Barre de titre ──
     local titleBar = MakeFrame(main,
-        UDim2.new(1, 0, 0, titleH),
-        UDim2.new(0, 0, 0, titleY),
+        UDim2.new(1, 0, 0, 40),
+        UDim2.new(0, 0, 0, 2),
         C.BgDeep, 0
     )
 
     -- Titre
     MakeLabel(titleBar, title,
-        UDim2.new(1, -Responsive.px(120), 1, 0),
-        UDim2.new(0, Responsive.px(14), 0, 0),
-        C.TextBright, Responsive.fs(14), Enum.Font.GothamBold
+        UDim2.new(1, -120, 1, 0),
+        UDim2.new(0, 14, 0, 0),
+        C.TextBright, 14, Enum.Font.GothamBold
     )
 
     -- Version (petit, discret)
     MakeLabel(titleBar, "v3.0",
-        UDim2.new(0, Responsive.px(35), 1, 0),
-        UDim2.new(0, Responsive.px(14), 0, 0),
-        C.Accent, Responsive.fs(10), Enum.Font.Gotham
+        UDim2.new(0, 35, 1, 0),
+        UDim2.new(0, 14, 0, 0),
+        C.Accent, 10, Enum.Font.Gotham
     )
 
     -- Bouton Fermer (×)
-    local btnSz = Responsive.px(24)
     local closeBtn = Instance.new("TextButton")
-    closeBtn.Size             = UDim2.new(0, btnSz, 0, btnSz)
-    closeBtn.Position         = UDim2.new(1, -Responsive.px(32), 0.5, -btnSz/2)
+    closeBtn.Size             = UDim2.new(0, 24, 0, 24)
+    closeBtn.Position         = UDim2.new(1, -32, 0.5, -12)
     closeBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 70)
     closeBtn.Text             = "×"
     closeBtn.TextColor3       = C.White
-    closeBtn.TextSize         = Responsive.fs(16)
+    closeBtn.TextSize         = 16
     closeBtn.Font             = Enum.Font.GothamBold
     closeBtn.BorderSizePixel  = 0
     closeBtn.Parent           = titleBar
@@ -577,19 +526,19 @@ function VoidUI:CreateWindow(cfg)
         Tween(closeBtn, { BackgroundColor3 = Color3.fromRGB(200, 50, 70) }, 0.1)
     end)
     closeBtn.MouseButton1Click:Connect(function()
-        Tween(main, { Size = UDim2.new(0, sizeW, 0, 0), BackgroundTransparency = 1 }, 0.2)
+        Tween(main, { Size = UDim2.new(0, WIN_W, 0, 0), BackgroundTransparency = 1 }, 0.2)
         task.wait(0.25)
         sg:Destroy()
     end)
 
     -- Bouton Minimiser (—)
     local minBtn = Instance.new("TextButton")
-    minBtn.Size             = UDim2.new(0, btnSz, 0, btnSz)
-    minBtn.Position         = UDim2.new(1, -Responsive.px(60), 0.5, -btnSz/2)
+    minBtn.Size             = UDim2.new(0, 24, 0, 24)
+    minBtn.Position         = UDim2.new(1, -60, 0.5, -12)
     minBtn.BackgroundColor3 = C.BgLight
     minBtn.Text             = "—"
     minBtn.TextColor3       = C.TextMid
-    minBtn.TextSize         = Responsive.fs(13)
+    minBtn.TextSize         = 13
     minBtn.Font             = Enum.Font.GothamBold
     minBtn.BorderSizePixel  = 0
     minBtn.Parent           = titleBar
@@ -605,8 +554,8 @@ function VoidUI:CreateWindow(cfg)
 
     -- Séparateur dégradé sous le titre
     local titleSep = MakeFrame(main,
-        UDim2.new(1, 0, 0, sepH),
-        UDim2.new(0, 0, 0, titleSepY),
+        UDim2.new(1, 0, 0, 1),
+        UDim2.new(0, 0, 0, 42),
         C.White, 0
     )
     Gradient(C.Accent, C.AccentPink, titleSep, 0)
@@ -618,12 +567,12 @@ function VoidUI:CreateWindow(cfg)
     -- Si une icône est fournie (pillIcon), on affiche une pill carrée avec l'image
     -- Sinon on affiche la pill texte classique
     local pillHasIcon = pillIcon ~= ""
-    local pillW       = pillHasIcon and Responsive.px(52) or Responsive.px(145)
-    local pillH       = pillHasIcon and Responsive.px(52) or Responsive.px(36)
+    local pillW       = pillHasIcon and 52 or 145
+    local pillH       = pillHasIcon and 52 or 36
 
     local pill = Instance.new("TextButton")
     pill.Size             = UDim2.new(0, pillW, 0, pillH)
-    pill.Position         = UDim2.new(0, Responsive.px(16), 1, -(pillH + Responsive.px(18)))
+    pill.Position         = UDim2.new(0, 16, 1, -(pillH + 18))
     pill.BackgroundColor3 = C.BgMid
     pill.BorderSizePixel  = 0
     pill.Text             = ""
@@ -635,10 +584,9 @@ function VoidUI:CreateWindow(cfg)
 
     if pillHasIcon then
         -- Mode icône : image centrée dans la pill carrée
-        local imgSz = Responsive.px(34)
         local pillImg = Instance.new("ImageLabel")
-        pillImg.Size                   = UDim2.new(0, imgSz, 0, imgSz)
-        pillImg.Position               = UDim2.new(0.5, -imgSz/2, 0.5, -imgSz/2)
+        pillImg.Size                   = UDim2.new(0, 34, 0, 34)
+        pillImg.Position               = UDim2.new(0.5, -17, 0.5, -17)
         pillImg.BackgroundTransparency = 1
         pillImg.Image                  = pillIcon
         pillImg.ScaleType              = Enum.ScaleType.Fit
@@ -646,14 +594,13 @@ function VoidUI:CreateWindow(cfg)
         pillImg.Parent                 = pill
 
         -- Petit point pulsant en bas à droite de la pill icône
-        local dotSz = Responsive.px(10)
         local pillDot = MakeFrame(pill,
-            UDim2.new(0, dotSz, 0, dotSz),
-            UDim2.new(1, -(dotSz + Responsive.px(2)), 1, -(dotSz + Responsive.px(2))),
+            UDim2.new(0, 10, 0, 10),
+            UDim2.new(1, -12, 1, -12),
             C.Accent, 0
         )
         pillDot.ZIndex = 102
-        Corner(math.max(2, math.round(dotSz/2)), pillDot)
+        Corner(5, pillDot)
         Stroke(1.5, C.BgMid, pillDot)
 
         -- Animation pulsante
@@ -672,24 +619,24 @@ function VoidUI:CreateWindow(cfg)
     else
         -- Mode texte classique : point + titre + flèche
         local pillDot = MakeFrame(pill,
-            UDim2.new(0, Responsive.px(7), 0, Responsive.px(7)),
-            UDim2.new(0, Responsive.px(11), 0.5, -Responsive.px(3)),
+            UDim2.new(0, 7, 0, 7),
+            UDim2.new(0, 11, 0.5, -3),
             C.Accent, 0
         )
         pillDot.ZIndex = 101
         Corner(4, pillDot)
 
         local pillLabel = MakeLabel(pill, title,
-            UDim2.new(1, -Responsive.px(44), 1, 0),
-            UDim2.new(0, Responsive.px(25), 0, 0),
-            C.TextBright, Responsive.fs(12), Enum.Font.GothamBold
+            UDim2.new(1, -44, 1, 0),
+            UDim2.new(0, 25, 0, 0),
+            C.TextBright, 12, Enum.Font.GothamBold
         )
         pillLabel.ZIndex = 101
 
         local pillArrow = MakeLabel(pill, "↗",
-            UDim2.new(0, Responsive.px(20), 1, 0),
-            UDim2.new(1, -Responsive.px(24), 0, 0),
-            C.Accent, Responsive.fs(13), Enum.Font.GothamBold,
+            UDim2.new(0, 20, 1, 0),
+            UDim2.new(1, -24, 0, 0),
+            C.Accent, 13, Enum.Font.GothamBold,
             Enum.TextXAlignment.Center
         )
         pillArrow.ZIndex = 101
@@ -731,7 +678,7 @@ function VoidUI:CreateWindow(cfg)
         savedPos  = main.Position
 
         Tween(main, {
-            Size = UDim2.new(0, sizeW, 0, 0),
+            Size = UDim2.new(0, WIN_W, 0, 0),
             BackgroundTransparency = 1,
         }, 0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
 
@@ -757,7 +704,7 @@ function VoidUI:CreateWindow(cfg)
         pill.Size    = UDim2.new(0, pillW, 0, pillH)
 
         main.Visible = true
-        main.Size    = UDim2.new(0, sizeW, 0, 0)
+        main.Size    = UDim2.new(0, size.X.Offset, 0, 0)
         main.Position = savedPos
         Tween(main, { Size = size }, 0.3, Enum.EasingStyle.Back)
     end)
@@ -768,20 +715,11 @@ function VoidUI:CreateWindow(cfg)
 
     if tabPosition == "top" then
         -- ── MODE TOP : tab bar horizontale sous le titre ──
-        -- ScrollingFrame horizontal : permet de swipe quand il y a beaucoup d'onglets
-        tabBar = Instance.new("ScrollingFrame")
-        tabBar.Size                  = UDim2.new(1, 0, 0, tabBarH)
-        tabBar.Position              = UDim2.new(0, 0, 0, tabBarY)
-        tabBar.BackgroundColor3      = C.BgDeep
-        tabBar.BackgroundTransparency = 0
-        tabBar.BorderSizePixel       = 0
-        tabBar.ScrollingDirection    = Enum.ScrollingDirection.X
-        tabBar.AutomaticCanvasSize   = Enum.AutomaticSize.X
-        tabBar.ScrollBarThickness    = 0
-        tabBar.CanvasSize            = UDim2.new(0, 0, 1, 0)
-        tabBar.ElasticBehavior       = Enum.ElasticBehavior.Always
-        tabBar.ClipsDescendants      = true
-        tabBar.Parent                = main
+        tabBar = MakeFrame(main,
+            UDim2.new(1, 0, 0, 34),
+            UDim2.new(0, 0, 0, 43),
+            C.BgDeep, 0
+        )
 
         tabLayout = Instance.new("UIListLayout")
         tabLayout.FillDirection = Enum.FillDirection.Horizontal
@@ -792,38 +730,29 @@ function VoidUI:CreateWindow(cfg)
 
         -- Séparateur sous la tab bar
         local tabSep = MakeFrame(main,
-            UDim2.new(1, 0, 0, sepH),
-            UDim2.new(0, 0, 0, tabSepY),
+            UDim2.new(1, 0, 0, 1),
+            UDim2.new(0, 0, 0, 77),
             C.BorderDim, 0
         )
         Gradient(C.Accent, C.AccentPink, tabSep, 0)
 
         -- Contenu prend toute la largeur sous la tab bar
         contentArea = MakeFrame(main,
-            UDim2.new(1, 0, 1, -contentY),
-            UDim2.new(0, 0, 0, contentY),
+            UDim2.new(1, 0, 1, -79),
+            UDim2.new(0, 0, 0, 79),
             C.BgDeep, 0
         )
         contentArea.ClipsDescendants = true
 
     else
         -- ── MODE SIDE : tab bar verticale à gauche ──
-        local sideWidth = Responsive.px(110)
-        local sideY     = titleSepY + sepH + Responsive.px(1)
+        local sideWidth = 110  -- largeur de la colonne de gauche
 
-        tabBar = Instance.new("ScrollingFrame")
-        tabBar.Size                  = UDim2.new(0, sideWidth, 1, -sideY)
-        tabBar.Position              = UDim2.new(0, 0, 0, sideY)
-        tabBar.BackgroundColor3      = C.BgMid
-        tabBar.BackgroundTransparency = 0
-        tabBar.BorderSizePixel       = 0
-        tabBar.ScrollingDirection    = Enum.ScrollingDirection.Y
-        tabBar.AutomaticCanvasSize   = Enum.AutomaticSize.Y
-        tabBar.ScrollBarThickness    = 0
-        tabBar.CanvasSize            = UDim2.new(1, 0, 0, 0)
-        tabBar.ElasticBehavior       = Enum.ElasticBehavior.Always
-        tabBar.ClipsDescendants      = true
-        tabBar.Parent                = main
+        tabBar = MakeFrame(main,
+            UDim2.new(0, sideWidth, 1, -44),
+            UDim2.new(0, 0, 0, 44),
+            C.BgMid, 0
+        )
 
         tabLayout = Instance.new("UIListLayout")
         tabLayout.FillDirection = Enum.FillDirection.Vertical
@@ -834,24 +763,24 @@ function VoidUI:CreateWindow(cfg)
 
         -- Séparateur vertical entre la sidebar et le contenu
         local sideSep = MakeFrame(main,
-            UDim2.new(0, 1, 1, -sideY),
-            UDim2.new(0, sideWidth, 0, sideY),
+            UDim2.new(0, 1, 1, -44),
+            UDim2.new(0, sideWidth, 0, 44),
             C.White, 0
         )
         Gradient(C.Accent, C.AccentPink, sideSep, 90)
 
         -- Contenu à droite de la sidebar
         contentArea = MakeFrame(main,
-            UDim2.new(1, -sideWidth - 1, 1, -sideY),
-            UDim2.new(0, sideWidth + 1, 0, sideY),
+            UDim2.new(1, -sideWidth - 1, 1, -44),
+            UDim2.new(0, sideWidth + 1, 0, 44),
             C.BgDeep, 0
         )
         contentArea.ClipsDescendants = true
     end
 
     -- Animation d'ouverture de la fenêtre
-    main.Size = UDim2.new(0, sizeW, 0, 0)
-    Tween(main, { Size = size }, 0.38, Enum.EasingStyle.Back)
+    main.Size = UDim2.new(0, size.X.Offset, 0, 0)
+    Tween(main, { Size = WIN_SIZE }, 0.38, Enum.EasingStyle.Back)
 
     -- ════════════════════════════════════════════════════════════════════════
     --  OBJET FENÊTRE (Window)
@@ -951,22 +880,16 @@ function VoidUI:CreateWindow(cfg)
         end)
 
         -- ScrollingFrame pour le contenu de cet onglet
-        -- Les composants gardent leur taille pixel d'origine et deviennent
-        -- scrollables verticalement si ils dépassent la fenêtre.
         local scrollFrame = Instance.new("ScrollingFrame")
-        scrollFrame.Size                  = UDim2.new(1, 0, 1, 0)
-        scrollFrame.Position              = UDim2.new(0, 0, 0, 0)
+        scrollFrame.Size                 = UDim2.new(1, 0, 1, 0)
         scrollFrame.BackgroundTransparency = 1
-        scrollFrame.BorderSizePixel       = 0
-        scrollFrame.ScrollBarThickness    = Responsive.isMobile and 3 or 5
-        scrollFrame.ScrollBarImageColor3  = Color3.fromRGB(130, 80, 255)
-        scrollFrame.CanvasSize            = UDim2.new(0, 0, 0, 0)
-        scrollFrame.AutomaticCanvasSize   = Enum.AutomaticSize.Y
-        scrollFrame.ScrollingDirection    = Enum.ScrollingDirection.Y
-        scrollFrame.ElasticBehavior       = Enum.ElasticBehavior.Always
-        scrollFrame.Visible               = false
-        scrollFrame.ClipsDescendants      = false  -- permet aux dropdowns de dépasser
-        scrollFrame.Parent                = contentArea
+        scrollFrame.BorderSizePixel      = 0
+        scrollFrame.ScrollBarThickness   = 3
+        scrollFrame.ScrollBarImageColor3 = C.Accent
+        scrollFrame.CanvasSize           = UDim2.new(0, 0, 0, 0)
+        scrollFrame.Visible              = false
+        scrollFrame.ClipsDescendants     = false  -- permet aux dropdowns de dépasser
+        scrollFrame.Parent               = contentArea
 
         -- Layout vertical avec espacement entre les éléments
         local listLayout = Instance.new("UIListLayout")
@@ -974,6 +897,13 @@ function VoidUI:CreateWindow(cfg)
         listLayout.Padding   = UDim.new(0, 6)
         listLayout.Parent    = scrollFrame
         Pad(10, 10, 10, 10, scrollFrame)
+
+        -- Redimensionne automatiquement le canvas quand le contenu change
+        listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+            scrollFrame.CanvasSize = UDim2.new(0, 0, 0,
+                listLayout.AbsoluteContentSize.Y + 20
+            )
+        end)
 
         Window._tabBtns[name]   = tabBtn
         Window._tabFrames[name] = scrollFrame
@@ -1010,10 +940,12 @@ function VoidUI:CreateWindow(cfg)
         end
 
         -- Refresh du canvas (à appeler après les composants dépliables)
-        -- Avec AutomaticCanvasSize.Y le canvas se recalcule automatiquement,
-        -- mais on garde la fonction comme no-op pour compatibilité.
         local function RefreshCanvas()
-            -- no-op : AutomaticCanvasSize.Y gère le canvas
+            task.defer(function()
+                scrollFrame.CanvasSize = UDim2.new(0, 0, 0,
+                    listLayout.AbsoluteContentSize.Y + 20
+                )
+            end)
         end
 
         -- ── LABEL / SECTION ──────────────────────────────────────────────
@@ -1291,16 +1223,12 @@ function VoidUI:CreateWindow(cfg)
                 UpdateSlider(UserInputService:GetMouseLocation().X)
             end)
             UserInputService.InputChanged:Connect(function(input)
-                if sliding and (
-                    input.UserInputType == Enum.UserInputType.MouseMovement
-                    or input.UserInputType == Enum.UserInputType.Touch
-                ) then
+                if sliding and input.UserInputType == Enum.UserInputType.MouseMovement then
                     UpdateSlider(input.Position.X)
                 end
             end)
             UserInputService.InputEnded:Connect(function(input)
-                if input.UserInputType == Enum.UserInputType.MouseButton1
-                    or input.UserInputType == Enum.UserInputType.Touch then
+                if input.UserInputType == Enum.UserInputType.MouseButton1 then
                     sliding = false
                 end
             end)
@@ -1435,8 +1363,7 @@ function VoidUI:CreateWindow(cfg)
 
             -- Fermeture automatique si clic en dehors du dropdown
             UserInputService.InputBegan:Connect(function(input)
-                if (input.UserInputType == Enum.UserInputType.MouseButton1
-                    or input.UserInputType == Enum.UserInputType.Touch) and open then
+                if input.UserInputType == Enum.UserInputType.MouseButton1 and open then
                     -- Vérifie si le clic est en dehors du bouton et de la liste
                     local mousePos = UserInputService:GetMouseLocation()
                     local btnPos   = btn.AbsolutePosition
@@ -1754,16 +1681,12 @@ function VoidUI:CreateWindow(cfg)
                     SlideHSV(UserInputService:GetMouseLocation().X)
                 end)
                 UserInputService.InputChanged:Connect(function(input)
-                    if sliding and (
-                        input.UserInputType == Enum.UserInputType.MouseMovement
-                        or input.UserInputType == Enum.UserInputType.Touch
-                    ) then
+                    if sliding and input.UserInputType == Enum.UserInputType.MouseMovement then
                         SlideHSV(input.Position.X)
                     end
                 end)
                 UserInputService.InputEnded:Connect(function(input)
-                    if input.UserInputType == Enum.UserInputType.MouseButton1
-                        or input.UserInputType == Enum.UserInputType.Touch then
+                    if input.UserInputType == Enum.UserInputType.MouseButton1 then
                         sliding = false
                     end
                 end)
@@ -2301,8 +2224,7 @@ function VoidUI:CreateWindow(cfg)
 
             -- Fermeture sur clic extérieur
             UserInputService.InputBegan:Connect(function(input)
-                if (input.UserInputType == Enum.UserInputType.MouseButton1
-                    or input.UserInputType == Enum.UserInputType.Touch) and dropOpen then
+                if input.UserInputType == Enum.UserInputType.MouseButton1 and dropOpen then
                     local mp       = UserInputService:GetMouseLocation()
                     local bPos     = dropBg.AbsolutePosition
                     local bSize    = dropBg.AbsoluteSize
@@ -2527,8 +2449,7 @@ function VoidUI:CreateFloatingButton(cfg)
     local moved     = false
 
     btn.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging  = true
             moved     = false
             dragStart = input.Position
@@ -2537,8 +2458,7 @@ function VoidUI:CreateFloatingButton(cfg)
     end)
 
     btn.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = false
             -- Si pas de mouvement significatif => c'est un clic
             if not moved then
@@ -2548,10 +2468,7 @@ function VoidUI:CreateFloatingButton(cfg)
     end)
 
     UserInputService.InputChanged:Connect(function(input)
-        if dragging and (
-            input.UserInputType == Enum.UserInputType.MouseMovement
-            or input.UserInputType == Enum.UserInputType.Touch
-        ) then
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
             local delta = input.Position - dragStart
             -- On considère que c'est un drag seulement si on bouge de +4px
             if math.abs(delta.X) > 4 or math.abs(delta.Y) > 4 then
@@ -2645,24 +2562,19 @@ function VoidUI:CreateOverlay(cfg)
     local startPos  = nil
 
     container.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging  = true
             dragStart = input.Position
             startPos  = container.Position
         end
     end)
     container.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = false
         end
     end)
     UserInputService.InputChanged:Connect(function(input)
-        if dragging and (
-            input.UserInputType == Enum.UserInputType.MouseMovement
-            or input.UserInputType == Enum.UserInputType.Touch
-        ) then
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
             local delta = input.Position - dragStart
             container.Position = UDim2.new(
                 startPos.X.Scale, startPos.X.Offset + delta.X,
@@ -2833,50 +2745,44 @@ function VoidUI:ShowCredit(onClose)
     local ok = pcall(function() ScreenGui.Parent = game:GetService("CoreGui") end)
     if not ok then ScreenGui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui") end
 
-    -- ── Sizing responsive (S, bgW, bgH) ──
-    local S   = Responsive.scale
-    local bgW = math.round(500 * S)
-    local bgH = math.round(370 * S)
-    local M   = Responsive.px(10)   -- marge horizontale / verticale standard
-
     local bg = Instance.new("Frame")
-    bg.Size = UDim2.new(0, bgW, 0, bgH)
-    bg.Position = UDim2.new(0.5, -bgW/2, 0.5, -bgH/2)
+    bg.Size = UDim2.new(0, 500, 0, 370)
+    bg.Position = UDim2.new(0.5, -250, 0.5, -185)
     bg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
     bg.BorderSizePixel = 1
     bg.Parent = ScreenGui
 
     local text = Instance.new("TextLabel")
-    text.Size = UDim2.new(1, -M*2, 0, Responsive.px(130))
-    text.Position = UDim2.new(0, M, 0, M)
+    text.Size = UDim2.new(1, -20, 0, 130)
+    text.Position = UDim2.new(0, 10, 0, 10)
     text.BackgroundTransparency = 1
     text.TextColor3 = Color3.fromRGB(255, 255, 255)
     text.TextWrapped = true
     text.Font = Enum.Font.GothamBold
-    text.TextSize = Responsive.fs(16)
+    text.TextSize = 16
     text.TextYAlignment = Enum.TextYAlignment.Top
     text.Text = "Script made by AKkiwi\n\n⚠️ All my scripts are FREE and KEYLESS.\nIf you were asked for a key or a key system,\nyou got SCAMMED.\nGet all my scripts for free on RScripts and Discord."
     text.Parent = bg
 
     local likeText = Instance.new("TextLabel")
-    likeText.Size = UDim2.new(1, -M*2, 0, Responsive.px(40))
-    likeText.Position = UDim2.new(0, M, 0, Responsive.px(140))
+    likeText.Size = UDim2.new(1, -20, 0, 40)
+    likeText.Position = UDim2.new(0, 10, 0, 140)
     likeText.BackgroundTransparency = 1
     likeText.TextColor3 = Color3.fromRGB(255, 200, 50)
     likeText.TextWrapped = true
     likeText.Font = Enum.Font.GothamBold
-    likeText.TextSize = Responsive.fs(14)
+    likeText.TextSize = 14
     likeText.TextYAlignment = Enum.TextYAlignment.Top
     likeText.Text = "⭐ If you enjoy my scripts, please like and follow\nmy RScripts profile — it helps a lot, thank you!"
     likeText.Parent = bg
 
     local discordBtn = Instance.new("TextButton")
-    discordBtn.Size = UDim2.new(1, -M*2, 0, Responsive.px(38))
-    discordBtn.Position = UDim2.new(0, M, 0, Responsive.px(190))
+    discordBtn.Size = UDim2.new(1, -20, 0, 38)
+    discordBtn.Position = UDim2.new(0, 10, 0, 190)
     discordBtn.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
     discordBtn.TextColor3 = Color3.fromRGB(100, 150, 255)
     discordBtn.Font = Enum.Font.Gotham
-    discordBtn.TextSize = Responsive.fs(15)
+    discordBtn.TextSize = 15
     discordBtn.BorderSizePixel = 0
     discordBtn.Text = "🔗 discord.gg/ztnxx5FJk  (click to copy)"
     discordBtn.Parent = bg
@@ -2888,12 +2794,12 @@ function VoidUI:ShowCredit(onClose)
     end)
 
     local rscriptsBtn = Instance.new("TextButton")
-    rscriptsBtn.Size = UDim2.new(1, -M*2, 0, Responsive.px(38))
-    rscriptsBtn.Position = UDim2.new(0, M, 0, Responsive.px(238))
+    rscriptsBtn.Size = UDim2.new(1, -20, 0, 38)
+    rscriptsBtn.Position = UDim2.new(0, 10, 0, 238)
     rscriptsBtn.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
     rscriptsBtn.TextColor3 = Color3.fromRGB(100, 200, 100)
     rscriptsBtn.Font = Enum.Font.Gotham
-    rscriptsBtn.TextSize = Responsive.fs(15)
+    rscriptsBtn.TextSize = 15
     rscriptsBtn.BorderSizePixel = 0
     rscriptsBtn.Text = "🌐 rscripts.net/@akkiwi — All my scripts (click to copy)"
     rscriptsBtn.Parent = bg
@@ -2905,12 +2811,12 @@ function VoidUI:ShowCredit(onClose)
     end)
 
     local closeBtn = Instance.new("TextButton")
-    closeBtn.Size = UDim2.new(1, -M*2, 0, Responsive.px(38))
-    closeBtn.Position = UDim2.new(0, M, 0, Responsive.px(320))
+    closeBtn.Size = UDim2.new(1, -20, 0, 38)
+    closeBtn.Position = UDim2.new(0, 10, 0, 320)
     closeBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     closeBtn.Font = Enum.Font.GothamBold
-    closeBtn.TextSize = Responsive.fs(15)
+    closeBtn.TextSize = 15
     closeBtn.BorderSizePixel = 0
     closeBtn.Text = "Got it — Close"
     closeBtn.Parent = bg
