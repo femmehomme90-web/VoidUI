@@ -1,377 +1,1190 @@
---[[
-╔══════════════════════════════════════════════════════════════════════════════╗
-║                       VoidUI v3 — SCRIPT DE TEST                             ║
-║                                                                              ║
-║  Teste tous les composants pour vérifier le responsive mobile :              ║
-║    • CreateWindow (mode top + mode side)                                     ║
-║    • Toggle, Slider, Button, Dropdown, TextInput                             ║
-║    • Keybind, ColorPicker, ProgressBar, MultiToggle, Label                   ║
-║    • CardGrid, FilteredCardGrid                                              ║
-║    • Notify, FloatingButton, Overlay, ShowCredit                             ║
-╚══════════════════════════════════════════════════════════════════════════════╝
+-- Browse seeds by rarity, select the ones you want, then enable Auto-Buy in the Auto tab.
+-- The script will roll the seed machine and purchase any matching seed automatically.
+-- Enable Auto-Collect to sell your crates every 2 minutes.
 
-INSTRUCTIONS :
-  1. Héberge voidUI_v3_responsive.lua sur un host raw (GitHub Gist, pastebin
-     raw, raw.githubusercontent.com, etc.)
-  2. Remplace l'URL ci-dessous par ton URL raw
-  3. Exécute ce script dans ton executor
+local VoidUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/femmehomme90-web/VoidUI/refs/heads/main/voidUIUPD.lua"))()
+VoidUI:SetScriptName("Build-A-Ring-Farm Script-OBF")
+VoidUI:ShowCredit(function()
+print("V4")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players           = game:GetService("Players")
 
-  Pour tester en local sur PC, tu peux aussi remplacer le loadstring par :
-     local VoidUI = loadfile("voidUI_v3_responsive.lua")()
-]]
+-- ════════════════════════════════════════════════════════
+--  DATA
+-- ════════════════════════════════════════════════════════
 
--- ════════════════════════════════════════════════════════════════════════════
---  CHARGEMENT DE LA LIB
--- ════════════════════════════════════════════════════════════════════════════
-local URL = "https://raw.githubusercontent.com/femmehomme90-web/VoidUI/refs/heads/main/VoidUiUPD"
+local player    = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid  = character:WaitForChild("Humanoid")
 
-local VoidUI = loadstring(game:HttpGet(URL))()
+local Plots  = workspace.Map.Plots
+local myPlot = nil
 
--- Nettoyage de toute UI précédente (utile en re-injectant)
-VoidUI:DestroyAll()
-VoidUI:SetScriptName("VoidUI_Test")
-
--- ════════════════════════════════════════════════════════════════════════════
---  NOTIFICATION DE BIENVENUE
--- ════════════════════════════════════════════════════════════════════════════
-VoidUI:Notify({
-    Title    = "VoidUI Test",
-    Message  = "Script de test chargé. Ouvre les onglets pour explorer.",
-    Type     = "success",
-    Duration = 4,
-})
-
--- ════════════════════════════════════════════════════════════════════════════
---  FENÊTRE PRINCIPALE
--- ════════════════════════════════════════════════════════════════════════════
-local Win = VoidUI:CreateWindow({
-    Title       = "Test Suite",
-    Size        = UDim2.new(0, 580, 0, 440),
-    TabPosition = "top",   -- mets "side" pour tester le mode latéral
-    Icon        = "rbxassetid://7733964719",  -- icône optionnelle pour la pill
-})
-
--- ════════════════════════════════════════════════════════════════════════════
---  ONGLET 1 : COMPOSANTS DE BASE
--- ════════════════════════════════════════════════════════════════════════════
-local Main = Win:AddTab("Main")
-
-Main:AddLabel("Section : Toggles & Sliders")
-
-Main:AddToggle({
-    Label    = "Auto Farm",
-    Default  = false,
-    Callback = function(v)
-        VoidUI:Notify({
-            Title    = "Auto Farm",
-            Message  = v and "Activé" or "Désactivé",
-            Type     = v and "success" or "info",
-            Duration = 2,
-        })
-    end,
-})
-
-Main:AddToggle({
-    Label    = "Auto Hatch",
-    Default  = true,
-    Callback = function(v) print("Auto Hatch:", v) end,
-})
-
-Main:AddSlider({
-    Label    = "Walk Speed",
-    Min      = 0,
-    Max      = 300,
-    Default  = 16,
-    Suffix   = " sps",
-    Callback = function(v)
-        local lp = game.Players.LocalPlayer
-        if lp.Character and lp.Character:FindFirstChildOfClass("Humanoid") then
-            lp.Character:FindFirstChildOfClass("Humanoid").WalkSpeed = v
-        end
-    end,
-})
-
-Main:AddSlider({
-    Label    = "Jump Power",
-    Min      = 0,
-    Max      = 500,
-    Default  = 50,
-    Callback = function(v) print("Jump:", v) end,
-})
-
-Main:AddLabel("Section : Actions")
-
-Main:AddButton({
-    Label    = "Téléport au spawn",
-    Callback = function()
-        local lp = game.Players.LocalPlayer
-        if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
-            lp.Character.HumanoidRootPart.CFrame = CFrame.new(0, 50, 0)
-        end
-        VoidUI:Notify({ Title = "Teleport", Message = "Au spawn !", Type = "info", Duration = 2 })
-    end,
-})
-
-Main:AddButton({
-    Label    = "Bouton gradient custom",
-    Colors   = { Color3.fromRGB(255, 80, 120), Color3.fromRGB(255, 180, 60) },
-    Callback = function()
-        VoidUI:Notify({ Title = "Boom", Message = "Bouton gradient cliqué", Type = "warning", Duration = 2 })
-    end,
-})
-
-Main:AddButton({
-    Label    = "Show credit",
-    Callback = function() VoidUI:ShowCredit() end,
-})
-
--- ════════════════════════════════════════════════════════════════════════════
---  ONGLET 2 : INPUTS
--- ════════════════════════════════════════════════════════════════════════════
-local Inputs = Win:AddTab("Inputs")
-
-Inputs:AddLabel("Section : Saisie de texte")
-
-Inputs:AddTextInput({
-    Label       = "Pseudo",
-    Placeholder = "Ton pseudo...",
-    Callback    = function(v) print("Pseudo:", v) end,
-})
-
-Inputs:AddTextInput({
-    Label       = "URL Webhook",
-    Placeholder = "https://discord.com/api/...",
-    Callback    = function(v) print("Webhook:", v) end,
-})
-
-Inputs:AddLabel("Section : Choix")
-
-local dd = Inputs:AddDropdown({
-    Label    = "Mode farm",
-    Options  = { "Safe", "Fast", "YOLO", "AFK" },
-    Callback = function(v)
-        VoidUI:Notify({ Title = "Mode", Message = "Sélectionné : " .. v, Type = "info", Duration = 2 })
-    end,
-})
-
-Inputs:AddButton({
-    Label    = "Ajouter une option au dropdown",
-    Callback = function()
-        dd:SetOptions({ "Safe", "Fast", "YOLO", "AFK", "Ultra (nouveau)" })
-        VoidUI:Notify({ Title = "Dropdown", Message = "Option ajoutée", Type = "success", Duration = 2 })
-    end,
-})
-
-Inputs:AddKeybind({
-    Label    = "Toggle UI",
-    Default  = Enum.KeyCode.F,
-    Callback = function(k) print("Keybind appuyée :", k.Name) end,
-})
-
-Inputs:AddColorPicker({
-    Label    = "Couleur d'effet",
-    Default  = Color3.fromRGB(130, 80, 255),
-    Callback = function(c) print("Couleur :", c) end,
-})
-
--- ════════════════════════════════════════════════════════════════════════════
---  ONGLET 3 : AVANCÉ
--- ════════════════════════════════════════════════════════════════════════════
-local Adv = Win:AddTab("Avancé")
-
-Adv:AddLabel("Section : Progression")
-
-local pb = Adv:AddProgressBar({
-    Label  = "XP",
-    Value  = 0,
-    Max    = 100,
-    Suffix = " / 100",
-})
-
-Adv:AddButton({
-    Label    = "Simuler progression XP",
-    Callback = function()
-        for i = 0, 100, 5 do
-            pb:SetValue(i)
-            task.wait(0.05)
-        end
-        VoidUI:Notify({ Title = "Level up", Message = "XP au max", Type = "success", Duration = 2 })
-    end,
-})
-
-Adv:AddLabel("Section : Multi-toggle")
-
-Adv:AddMultiToggle({
-    Label    = "Options de combat",
-    Options  = { "Auto-attack", "Auto-dodge", "Auto-heal", "Auto-revive", "Auto-loot" },
-    Callback = function(t)
-        local count = 0
-        for _ in pairs(t) do count = count + 1 end
-        print(count, "options actives")
-    end,
-})
-
--- ════════════════════════════════════════════════════════════════════════════
---  ONGLET 4 : CARDS (test grille — important pour le scroll mobile)
--- ════════════════════════════════════════════════════════════════════════════
-local Cards = Win:AddTab("Cards")
-
-Cards:AddLabel("Section : Card Grid simple")
-
-Cards:AddCardGrid({
-    Items = {
-        { Name = "Common",    Icon = "rbxassetid://7733964719" },
-        { Name = "Uncommon",  Icon = "rbxassetid://7733964719" },
-        { Name = "Rare",      Icon = "rbxassetid://7733964719" },
-        { Name = "Epic",      Icon = "rbxassetid://7733964719" },
-        { Name = "Legendary", Icon = "rbxassetid://7733964719" },
-        { Name = "Mythic",    Icon = "rbxassetid://7733964719" },
-    },
-    Columns  = 3,
-    Callback = function(sel)
-        local list = {}
-        for n in pairs(sel) do table.insert(list, n) end
-        print("Cards sélectionnées :", table.concat(list, ", "))
-    end,
-})
-
-Cards:AddLabel("Section : Filtered Card Grid")
-
-local fcg = Cards:AddFilteredCardGrid({
-    Groups = {
-        { Label = "Common",   Items = {
-            { Name = "Egg 1", Icon = "rbxassetid://7733964719" },
-            { Name = "Egg 2", Icon = "rbxassetid://7733964719" },
-            { Name = "Egg 3", Icon = "rbxassetid://7733964719" },
-            { Name = "Egg 4", Icon = "rbxassetid://7733964719" },
-        }},
-        { Label = "Rare",     Items = {
-            { Name = "RareEgg 1", Icon = "rbxassetid://7733964719" },
-            { Name = "RareEgg 2", Icon = "rbxassetid://7733964719" },
-        }},
-        { Label = "Mythical", Items = {
-            { Name = "MythEgg",   Icon = "rbxassetid://7733964719" },
-        }},
-    },
-    Columns  = 4,
-    Callback = function(sel) print("Sélection filtrée :", sel) end,
-})
-
-Cards:AddButton({
-    Label    = "Tout sélectionner (groupe actuel)",
-    Callback = function() fcg:SelectAll() end,
-})
-Cards:AddButton({
-    Label    = "Tout désélectionner",
-    Callback = function() fcg:DeselectAll() end,
-})
-
--- ════════════════════════════════════════════════════════════════════════════
---  ONGLET 5 : SCROLL TEST (beaucoup de composants pour forcer le scroll)
--- ════════════════════════════════════════════════════════════════════════════
-local Scroll = Win:AddTab("Scroll")
-
-Scroll:AddLabel("Test du scroll vertical (mobile)")
-
-for i = 1, 15 do
-    Scroll:AddToggle({
-        Label    = "Toggle #" .. i,
-        Default  = (i % 2 == 0),
-        Callback = function(v) print("Toggle", i, ":", v) end,
-    })
-end
-
-Scroll:AddLabel("Fin de la liste")
-Scroll:AddButton({
-    Label    = "Bouton tout en bas",
-    Callback = function()
-        VoidUI:Notify({ Title = "Bottom", Message = "T'as scrollé jusqu'en bas !", Type = "success", Duration = 3 })
-    end,
-})
-
--- ════════════════════════════════════════════════════════════════════════════
---  ONGLET 6 : MANY TABS (test scroll de la tab bar)
---  On rajoute plusieurs onglets supplémentaires pour vérifier le scroll horizontal
--- ════════════════════════════════════════════════════════════════════════════
 for i = 1, 6 do
-    local T = Win:AddTab("Tab " .. i)
-    T:AddLabel("Onglet de test #" .. i)
-    T:AddButton({
-        Label    = "Action #" .. i,
-        Callback = function() print("Onglet", i, "→ action") end,
-    })
+    local plot = Plots:FindFirstChild("Plot" .. i)
+    if plot then
+        local att = plot:FindFirstChild("HomeLabelAttachment")
+        if att and #att:GetChildren() > 0 then
+            myPlot = plot
+            break
+        end
+    end
 end
 
--- ════════════════════════════════════════════════════════════════════════════
---  BOUTON FLOTTANT (toujours visible, draggable)
--- ════════════════════════════════════════════════════════════════════════════
-local floatBtn = VoidUI:CreateFloatingButton({
-    Text     = "Notif",
-    Position = UDim2.new(0, 20, 0.5, 0),
-    Size     = UDim2.new(0, 52, 0, 52),
+if not myPlot then
+    VoidUI:Notify({ Title = "Error", Message = "Could not find your plot!", Type = "error", Duration = 4 })
+    return
+end
+
+local seedRoller = myPlot:FindFirstChild("SeedRoller")
+local stands = {}
+for i = 1, 6 do
+    local stand = seedRoller:FindFirstChild("Stand" .. i)
+    if stand then
+        stands[i] = { index = i, position = stand:GetPivot().Position }
+    end
+end
+
+local function getWorldSeeds()
+    local seeds = {}
+    for _, model in ipairs(workspace:GetChildren()) do
+        if model:IsA("Model") and model:FindFirstChild("BuySeed", true) then
+            local seedPos = model:GetPivot().Position
+            local bestStand, bestDist = nil, math.huge
+            for _, st in pairs(stands) do
+                local d = (Vector3.new(seedPos.X, 0, seedPos.Z) - Vector3.new(st.position.X, 0, st.position.Z)).Magnitude
+                if d < bestDist then bestDist = d; bestStand = st end
+            end
+            if bestStand and bestDist < 15 then
+                seeds[model.Name] = bestStand.index
+            end
+        end
+    end
+    return seeds
+end
+
+local function getFarmPlots()
+    local out = {}
+    for _, name in ipairs({"FarmPlot", "SecondFloor", "ThirdFloor"}) do
+        local node = myPlot:FindFirstChild(name)
+        if node then
+            local fp = name == "FarmPlot" and node or node:FindFirstChild("FarmPlot")
+            if fp then table.insert(out, fp) end
+        end
+    end
+    return out
+end
+
+-- ── Fertilizer ──
+local FERTILIZER_NAMES = {
+    "Super Fertilizer",
+    "Strong Fertilizer",
+    "Normal Fertilizer",
+}
+
+local function getFertilizerFromBackpack()
+    for _, name in ipairs(FERTILIZER_NAMES) do
+        for _, tool in ipairs(player.Backpack:GetChildren()) do
+            if string.find(tool.Name, name, 1, true) then
+                return tool
+            end
+        end
+    end
+    return nil
+end
+
+local function getUnfertilizedDirt()
+    for _, fp in ipairs(getFarmPlots()) do
+        for _, plant in ipairs(fp:GetChildren()) do
+            local dirt = plant:FindFirstChild("Dirt")
+            if dirt and dirt:GetAttribute("PlantLevel") ~= nil then
+                if not dirt:GetAttribute("Fertilized") then
+                    return dirt
+                end
+            end
+        end
+    end
+    return nil
+end
+
+-- ── Seeds from game UI ──
+local seedScrollFrame = Players.LocalPlayer.PlayerGui.MainUI.Menus.IndexFrame.Main.PlantsFrame
+
+local rarityOrder = {
+    "Common", "Uncommon", "Rare", "Epic", "Legendary",
+    "Divine", "Prismatic", "Secret", "Exotic", "Transcended"
+}
+
+local seedsByRarity = {}
+for _, r in ipairs(rarityOrder) do seedsByRarity[r] = {} end
+
+for _, child in ipairs(seedScrollFrame:GetChildren()) do
+    if child:IsA("Frame") then
+        local icon   = child:FindFirstChild("Icon")
+        local rarity = child:FindFirstChild("RarityName")
+        local sname  = child:FindFirstChild("SeedName")
+        local name   = (sname and sname.Text ~= "???" and sname.Text) or child.Name
+        local rar    = (rarity and rarity.Text) or "Common"
+        local bucket = seedsByRarity[rar] or seedsByRarity["Common"]
+        table.insert(bucket, { Name = name, Icon = icon and icon.Image or "" })
+    end
+end
+
+local seedGroups = {}
+for _, r in ipairs(rarityOrder) do
+    if #seedsByRarity[r] > 0 then
+        table.insert(seedGroups, { Label = r, Items = seedsByRarity[r] })
+    end
+end
+
+-- ── Shop items from game UI ──
+local shopScrollFrame = Players.LocalPlayer.PlayerGui.MainUI.Menus.GearShopFrame.ScrollingFrame
+
+local function getShopItems()
+    local items = {}
+    for _, child in ipairs(shopScrollFrame:GetChildren()) do
+        if child:IsA("ImageLabel") then
+            local gearName  = child:FindFirstChild("GearName")
+            local gearImage = child:FindFirstChild("GearImage")
+            local imgLabel  = gearImage and gearImage:FindFirstChild("ImageLabel")
+            local rarLabel  = gearImage and gearImage:FindFirstChild("Rarity")
+            if gearName and imgLabel then
+                table.insert(items, {
+                    Name      = gearName.Text,
+                    Icon      = imgLabel.Image,
+                    StockLabel = rarLabel,
+                })
+            end
+        end
+    end
+    return items
+end
+
+local function parseStock(stockLabel)
+    if not stockLabel then return 0 end
+    local n = tonumber(stockLabel.Text:match("%d+"))
+    return n or 0
+end
+
+-- ════════════════════════════════════════════════════════
+--  EGGS DATA
+-- ════════════════════════════════════════════════════════
+
+local petMerchant = workspace:WaitForChild("PetMerchant", 10)
+
+local function scanEggs()
+    local found = {}
+    if not petMerchant then return found end
+    for i = 1, 5 do
+        local podium = petMerchant:FindFirstChild("Podium" .. i .. "Lever")
+        if podium then
+            local attachment = podium:FindFirstChild("PromptAttachment")
+            local prompt = attachment and attachment:FindFirstChild("EggShopPrompt")
+            if prompt and prompt.ObjectText ~= "" and not prompt.ObjectText:find("Slot") then
+                table.insert(found, { podiumIdx = i, name = prompt.ObjectText })
+            end
+        end
+    end
+    return found
+end
+
+local initialEggs = scanEggs()
+
+-- ════════════════════════════════════════════════════════
+--  PET OPTIMIZE HELPERS
+-- ════════════════════════════════════════════════════════
+
+local function getPetTeleportCFrame(floorIndex)
+    local sign
+    if floorIndex == 1 then
+        sign = myPlot:FindFirstChild("PlotUpgradeSign")
+    elseif floorIndex == 2 then
+        local sf = myPlot:FindFirstChild("SecondFloor")
+        sign = sf and sf:FindFirstChild("PlotUpgradeSign")
+    elseif floorIndex == 3 then
+        local tf = myPlot:FindFirstChild("ThirdFloor")
+        sign = tf and tf:FindFirstChild("PlotUpgradeSign")
+    end
+    return sign and sign:GetPivot()
+end
+
+local function getUnlockedFloors()
+    local floors = {}
+    if myPlot:FindFirstChild("FarmPlot") then table.insert(floors, 1) end
+    if myPlot:FindFirstChild("SecondFloor") then table.insert(floors, 2) end
+    if myPlot:FindFirstChild("ThirdFloor") then table.insert(floors, 3) end
+    return floors
+end
+
+local function getEquippedPets()
+    local pets = {}
+    for _, obj in ipairs(myPlot:GetChildren()) do
+        if obj:IsA("Model") and obj:GetAttribute("PetKey") ~= nil then
+            if obj:GetAttribute("PetOwner") == player.Name then
+                table.insert(pets, {
+                    name       = obj:GetAttribute("PetName"),
+                    petKey     = obj:GetAttribute("PetKey"),
+                    multiplier = obj:GetAttribute("EarningsMultiplier") or 1,
+                    floorIndex = obj:GetAttribute("FloorIndex") or 1,
+                })
+            end
+        end
+    end
+    return pets
+end
+
+local function getInventoryPets()
+    local pets = {}
+    for _, tool in ipairs(player.Backpack:GetChildren()) do
+        if tool:IsA("Tool") and tool:GetAttribute("InventoryCategory") == "Pets" then
+            table.insert(pets, {
+                name       = tool:GetAttribute("trueName") or tool.Name,
+                petKey     = tool:GetAttribute("petKey"),
+                multiplier = tool:GetAttribute("EarningsMultiplier") or 1,
+                tool       = tool,
+            })
+        end
+    end
+    return pets
+end
+
+local function optimizePets()
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    local unlockedFloors = getUnlockedFloors()
+
+    repeat
+        local equippedPets  = getEquippedPets()
+        local inventoryPets = getInventoryPets()
+
+        table.sort(equippedPets,  function(a, b) return a.multiplier > b.multiplier end)
+        table.sort(inventoryPets, function(a, b) return a.multiplier > b.multiplier end)
+
+        if #inventoryPets == 0 then break end
+
+        local nbSlots = #unlockedFloors
+        local allPets = {}
+        for _, p in ipairs(equippedPets) do
+            table.insert(allPets, { source = "equipped", data = p })
+        end
+        for _, p in ipairs(inventoryPets) do
+            table.insert(allPets, { source = "inventory", data = p })
+        end
+        table.sort(allPets, function(a, b) return a.data.multiplier > b.data.multiplier end)
+
+        local bestPets = {}
+        for i = 1, math.min(nbSlots, #allPets) do
+            table.insert(bestPets, allPets[i])
+        end
+
+        local bestKeys = {}
+        for _, entry in ipairs(bestPets) do
+            bestKeys[entry.data.petKey] = true
+        end
+
+        local toUnequip = {}
+        for _, p in ipairs(equippedPets) do
+            if not bestKeys[p.petKey] then
+                table.insert(toUnequip, p)
+            end
+        end
+
+        local toEquip = {}
+        for _, entry in ipairs(bestPets) do
+            if entry.source == "inventory" then
+                table.insert(toEquip, entry.data)
+            end
+        end
+
+        if #toUnequip == 0 and #toEquip == 0 then break end
+
+        for _, p in ipairs(toUnequip) do
+            ReplicatedStorage.Remotes.Pets.UnequipPet:FireServer(p.petKey)
+            task.wait(0.5)
+        end
+
+        for _, p in ipairs(toEquip) do
+            local occupied = {}
+            for _, eq in ipairs(getEquippedPets()) do
+                occupied[eq.floorIndex] = true
+            end
+
+            local targetFloor = nil
+            for _, floorIdx in ipairs(unlockedFloors) do
+                if not occupied[floorIdx] then
+                    targetFloor = floorIdx
+                    break
+                end
+            end
+
+            if not targetFloor then break end
+
+            local cf = getPetTeleportCFrame(targetFloor)
+            if cf then
+                hrp.CFrame = cf + Vector3.new(0, 3, 0)
+                task.wait(0.5)
+            end
+
+            local tool = player.Backpack:FindFirstChild(p.tool.Name)
+            if not tool then continue end
+
+            humanoid:EquipTool(tool)
+            task.wait(0.5)
+            ReplicatedStorage.Remotes.Pets.EquipPet:FireServer()
+            task.wait(0.3)
+            humanoid:UnequipTools()
+            task.wait(0.3)
+        end
+
+    until false
+
+    VoidUI:Notify({ Title = "Pets", Message = "Optimisation terminée.", Type = "success", Duration = 3 })
+end
+
+-- ════════════════════════════════════════════════════════
+--  UI
+-- ════════════════════════════════════════════════════════
+local Win = VoidUI:CreateWindow({
+    Title       = "BARF",
+    Size        = UDim2.new(0, 650, 0, 500),
+    TabPosition = "side",
+})
+
+local selectedSeeds = {}
+local selectedGear  = {}
+local buying        = false
+local stopBuying    = false
+
+-- ════════════════════════════════════════════════════════
+--  TAB SEEDS
+-- ════════════════════════════════════════════════════════
+local TabSeeds = Win:AddTab("Seeds")
+
+local seedGrid = TabSeeds:AddFilteredCardGrid({
+    Groups   = seedGroups,
+    Columns  = 4,
+    Callback = function(sel) selectedSeeds = sel end,
+})
+
+TabSeeds:AddButton({
+    Label    = "Select all (current rarity)",
     Callback = function()
-        VoidUI:Notify({
-            Title    = "Bouton flottant",
-            Message  = "Tu as cliqué le bouton flottant !",
-            Type     = "info",
-            Duration = 2,
-        })
+        seedGrid:SelectAll()
+        VoidUI:Notify({ Title = "Selection", Message = "All seeds in group selected.", Type = "info", Duration = 2 })
     end,
 })
 
--- ════════════════════════════════════════════════════════════════════════════
---  OVERLAY D'INFOS (HUD)
--- ════════════════════════════════════════════════════════════════════════════
-local overlay = VoidUI:CreateOverlay({
-    Position = UDim2.new(0, 20, 0, 120),
-    Width    = 180,
-    Items = {
-        { Type = "text", Text = "VoidUI HUD", Id = "title", Bold = true, Color = Color3.fromRGB(220, 80, 160) },
-        { Type = "separator" },
-        { Type = "text", Text = "FPS : --",   Id = "fps"  },
-        { Type = "text", Text = "Ping : --",  Id = "ping" },
-        { Type = "text", Text = "Time : --",  Id = "time" },
-    },
+TabSeeds:AddButton({
+    Label    = "Deselect all",
+    Callback = function()
+        seedGrid:DeselectAll()
+        VoidUI:Notify({ Title = "Selection", Message = "Selection cleared.", Type = "warning", Duration = 2 })
+    end,
 })
 
--- Mise à jour temps réel du HUD
-task.spawn(function()
-    local RunService = game:GetService("RunService")
-    local Stats      = game:GetService("Stats")
-    local lastTick   = tick()
-    local frames     = 0
-    local fps        = 0
-    RunService.RenderStepped:Connect(function()
-        frames = frames + 1
-        local now = tick()
-        if now - lastTick >= 1 then
-            fps      = frames
-            frames   = 0
-            lastTick = now
+-- ════════════════════════════════════════════════════════
+--  TAB SHOP
+-- ════════════════════════════════════════════════════════
+local TabShop = Win:AddTab("Shop")
+
+TabShop:AddLabel("Gear Shop — Auto-Buy")
+
+local shopItems = getShopItems()
+local shopCardItems = {}
+for _, item in ipairs(shopItems) do
+    table.insert(shopCardItems, { Name = item.Name, Icon = item.Icon })
+end
+
+local stockLabelByName = {}
+for _, item in ipairs(shopItems) do
+    stockLabelByName[item.Name] = item.StockLabel
+end
+
+TabShop:AddCardGrid({
+    Items    = shopCardItems,
+    Columns  = 4,
+    Callback = function(sel) selectedGear = sel end,
+})
+
+TabShop:AddButton({
+    Label    = "Deselect all",
+    Callback = function()
+        selectedGear = {}
+        VoidUI:Notify({ Title = "Selection", Message = "Shop selection cleared.", Type = "warning", Duration = 2 })
+    end,
+})
+
+-- ════════════════════════════════════════════════════════
+--  TAB EGGS
+-- ════════════════════════════════════════════════════════
+local TabEggs = Win:AddTab("Eggs")
+
+local selectedEggs = {}
+local buyingEggs   = false
+local stopEggs     = false
+
+local EGG_SLOTS = { "Common Egg", "Rare Egg", "Epic Egg" }
+
+TabEggs:AddLabel("Select eggs to buy")
+
+for _, eggName in ipairs(EGG_SLOTS) do
+    TabEggs:AddToggle({
+        Label   = eggName,
+        Default = false,
+        Callback = function(state)
+            selectedEggs[eggName] = state or nil
+        end,
+    })
+end
+
+TabEggs:AddLabel("Auto-Buy Eggs")
+
+TabEggs:AddToggle({
+    Label   = "Enable Auto-Buy Eggs",
+    Default = false,
+    Callback = function(state)
+        if state then
+            if buyingEggs then return end
+            buyingEggs = true; stopEggs = false
+            task.spawn(function()
+                while not stopEggs do
+                    local live = scanEggs()
+                    for _, egg in ipairs(live) do
+                        if stopEggs then break end
+                        if selectedEggs[egg.name] then
+                            local podium = petMerchant:FindFirstChild("Podium" .. egg.podiumIdx .. "Lever")
+                            local prompt = podium
+                                and podium:FindFirstChild("PromptAttachment")
+                                and podium.PromptAttachment:FindFirstChild("EggShopPrompt")
+                            if prompt and not prompt.ObjectText:find("Slot") then
+                                fireproximityprompt(prompt)
+                                VoidUI:Notify({
+                                    Title   = "Egg bought!",
+                                    Message = egg.name .. " (Podium " .. egg.podiumIdx .. ")",
+                                    Type    = "success",
+                                    Duration = 2,
+                                })
+                            end
+                            task.wait(0.3)
+                        end
+                    end
+                    local elapsed = 0
+                    while elapsed < 120 and not stopEggs do
+                        task.wait(1)
+                        elapsed += 1
+                    end
+                end
+                buyingEggs = false
+            end)
+        else
+            stopEggs = true
+            VoidUI:Notify({ Title = "Stopped", Message = "Auto-buy eggs stopped.", Type = "warning", Duration = 3 })
         end
-    end)
-    while task.wait(0.5) do
-        overlay:SetText("fps", "FPS : " .. fps)
-        local ping = 0
-        pcall(function()
-            ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
+    end,
+})
+
+TabEggs:AddButton({
+    Label  = "Roll Now",
+    Colors = { Color3.fromRGB(130, 80, 255), Color3.fromRGB(220, 80, 160) },
+    Callback = function()
+        local live = scanEggs()
+        for _, egg in ipairs(live) do
+            if selectedEggs[egg.name] then
+                local podium = petMerchant:FindFirstChild("Podium" .. egg.podiumIdx .. "Lever")
+                local prompt = podium
+                    and podium:FindFirstChild("PromptAttachment")
+                    and podium.PromptAttachment:FindFirstChild("EggShopPrompt")
+                if prompt and not prompt.ObjectText:find("Slot") then
+                    fireproximityprompt(prompt)
+                    VoidUI:Notify({
+                        Title   = "Egg bought!",
+                        Message = egg.name .. " (Podium " .. egg.podiumIdx .. ")",
+                        Type    = "success",
+                        Duration = 2,
+                    })
+                end
+                task.wait(0.3)
+            end
+        end
+    end,
+})
+
+-- ════════════════════════════════════════════════════════
+--  TAB AUTO
+-- ════════════════════════════════════════════════════════
+local TabCtrl = Win:AddTab("Auto")
+
+-- ── Auto-Buy Seeds ──
+TabCtrl:AddLabel("Auto-Buy Seeds")
+TabCtrl:AddToggle({
+    Label   = "Enable Auto-Buy Seeds",
+    Default = false,
+    Callback = function(state)
+        if state then
+            if buying then return end
+            buying = true; stopBuying = false
+            task.spawn(function()
+                while not stopBuying do
+                    if next(selectedSeeds) == nil then task.wait(1); continue end
+                    ReplicatedStorage.Remotes.RollSeeds:FireServer()
+                    task.wait(4)
+                    for seedName, standIdx in pairs(getWorldSeeds()) do
+                        if stopBuying then break end
+                        if selectedSeeds[seedName] then
+                            ReplicatedStorage.Remotes.BuySeed:FireServer(standIdx)
+                            VoidUI:Notify({ Title = "Purchased!", Message = seedName .. " → Stand " .. standIdx, Type = "success", Duration = 3 })
+                            task.wait(0.5)
+                        end
+                    end
+                    task.wait(1)
+                end
+                buying = false
+            end)
+        else
+            stopBuying = true
+            VoidUI:Notify({ Title = "Stopped", Message = "Auto-buy seeds stopped.", Type = "warning", Duration = 3 })
+        end
+    end,
+})
+
+-- ── Auto-Buy Shop ──
+TabCtrl:AddLabel("Auto-Buy Shop")
+
+local shopInterval   = 120
+local buyingShop     = false
+local stopBuyingShop = false
+
+TabCtrl:AddSlider({
+    Label    = "Scan interval (sec)",
+    Min      = 10, Max = 300, Default = 120,
+    Callback = function(v) shopInterval = v end,
+})
+
+TabCtrl:AddToggle({
+    Label   = "Enable Auto-Buy Shop",
+    Default = false,
+    Callback = function(state)
+        if state then
+            if buyingShop then return end
+            buyingShop = true; stopBuyingShop = false
+            task.spawn(function()
+                while not stopBuyingShop do
+                    if next(selectedGear) ~= nil then
+                        for itemName in pairs(selectedGear) do
+                            if stopBuyingShop then break end
+                            local stock = parseStock(stockLabelByName[itemName])
+                            if stock > 0 then
+                                for i = 1, stock do
+                                    if stopBuyingShop then break end
+                                    local ok, err = pcall(function()
+                                        ReplicatedStorage.Remotes.Gear.Transaction:InvokeServer(itemName)
+                                    end)
+                                    if ok then
+                                        VoidUI:Notify({ Title = "Purchased!", Message = itemName .. " (" .. i .. "/" .. stock .. ")", Type = "success", Duration = 3 })
+                                    else
+                                        VoidUI:Notify({ Title = "Error", Message = "Failed to buy " .. itemName, Type = "error", Duration = 3 })
+                                        break
+                                    end
+                                    task.wait(0.1)
+                                end
+                            end
+                        end
+                    end
+                    local elapsed = 0
+                    while elapsed < shopInterval and not stopBuyingShop do
+                        task.wait(1)
+                        elapsed += 1
+                    end
+                end
+                buyingShop = false
+            end)
+        else
+            stopBuyingShop = true
+            VoidUI:Notify({ Title = "Stopped", Message = "Auto-buy shop stopped.", Type = "warning", Duration = 3 })
+        end
+    end,
+})
+
+-- ── Auto-Collect ──
+TabCtrl:AddLabel("Auto-Collect")
+local collecting = false
+local stopCollecting = false
+TabCtrl:AddToggle({
+    Label   = "Enable Auto-Collect",
+    Default = false,
+    Callback = function(state)
+        if state then
+            if collecting then return end
+            collecting = true; stopCollecting = false
+            task.spawn(function()
+                while not stopCollecting do
+                    ReplicatedStorage.Remotes.SellCrates:FireServer()
+                    VoidUI:Notify({ Title = "Collected!", Message = "Crates sold.", Type = "success", Duration = 2 })
+                    task.wait(120)
+                end
+                collecting = false
+            end)
+        else
+            stopCollecting = true
+            VoidUI:Notify({ Title = "Stopped", Message = "Auto-collect stopped.", Type = "warning", Duration = 3 })
+        end
+    end,
+})
+
+-- ── Auto-Upgrade ──
+TabCtrl:AddLabel("Auto-Upgrade Plants")
+local targetLevel = 10
+TabCtrl:AddSlider({ Label = "Target level", Min = 1, Max = 75, Default = 10, Callback = function(v) targetLevel = v end })
+TabCtrl:AddButton({
+    Label  = "▶ Upgrade all plants",
+    Colors = { Color3.fromRGB(255, 140, 40), Color3.fromRGB(255, 200, 40) },
+    Callback = function()
+        local farmPlots = getFarmPlots()
+        if #farmPlots == 0 then
+            VoidUI:Notify({ Title = "Error", Message = "FarmPlot not found!", Type = "error", Duration = 3 })
+            return
+        end
+        task.spawn(function()
+            local upgraded = 0
+            for _, fp in ipairs(farmPlots) do
+                for _, plant in ipairs(fp:GetChildren()) do
+                    local dirt = plant:FindFirstChild("Dirt")
+                    if dirt and dirt:GetAttribute("PlantLevel") ~= nil then
+                        local lvl = dirt:GetAttribute("PlantLevel") or 0
+                        while lvl < targetLevel do
+                            ReplicatedStorage.Remotes.UpgradePlant:InvokeServer(dirt)
+                            task.wait(0.1)
+                            lvl = dirt:GetAttribute("PlantLevel") or 0
+                        end
+                        upgraded += 1
+                    end
+                end
+            end
+            VoidUI:Notify({ Title = "Done!", Message = upgraded .. " plant(s) upgraded to level " .. targetLevel, Type = "success", Duration = 4 })
         end)
-        overlay:SetText("ping", "Ping : " .. ping .. " ms")
-        overlay:SetText("time", "Time : " .. os.date("%H:%M:%S"))
+    end,
+})
+
+-- ── Auto-Fertilizer ──
+TabCtrl:AddLabel("Auto-Fertilizer")
+local fertilizing     = false
+local stopFertilizing = false
+TabCtrl:AddToggle({
+    Label   = "Enable Auto-Fertilizer",
+    Default = false,
+    Callback = function(state)
+        if state then
+            if fertilizing then return end
+            fertilizing = true; stopFertilizing = false
+            task.spawn(function()
+                while not stopFertilizing do
+                    local tool = getFertilizerFromBackpack()
+                    if tool then
+                        local dirt = getUnfertilizedDirt()
+                        if dirt then
+                            humanoid:EquipTool(tool)
+                            task.wait(0.5)
+                            ReplicatedStorage.Remotes.UseFertilizer:FireServer(dirt)
+                            task.wait(0.5)
+                            humanoid:UnequipTools()
+                            task.wait(0.1)
+                        else
+                            task.wait(5)
+                        end
+                    else
+                        task.wait(5)
+                    end
+                end
+                fertilizing = false
+            end)
+        else
+            stopFertilizing = true
+            VoidUI:Notify({ Title = "Stopped", Message = "Auto-fertilizer stopped.", Type = "warning", Duration = 3 })
+        end
+    end,
+})
+
+-- ── Auto-Pet Treat ──
+local PET_TREAT_NAMES = {
+    "Super Pet Treat",
+    "Strong Pet Treat",
+    "Normal Pet Treat",
+}
+
+local function getPetTreatFromBackpack()
+    for _, name in ipairs(PET_TREAT_NAMES) do
+        for _, tool in ipairs(player.Backpack:GetChildren()) do
+            if string.find(tool.Name, name, 1, true) then
+                return tool
+            end
+        end
     end
-end)
+    return nil
+end
 
--- ════════════════════════════════════════════════════════════════════════════
---  NOTIFICATIONS EN RAFALE (test du stacking + animations sortie)
--- ════════════════════════════════════════════════════════════════════════════
-task.delay(2, function()
-    VoidUI:Notify({ Title = "Info",    Message = "Notification de type info",    Type = "info",    Duration = 4 })
-    task.wait(0.4)
-    VoidUI:Notify({ Title = "Success", Message = "Notification de type success", Type = "success", Duration = 4 })
-    task.wait(0.4)
-    VoidUI:Notify({ Title = "Warning", Message = "Notification de type warning", Type = "warning", Duration = 4 })
-    task.wait(0.4)
-    VoidUI:Notify({ Title = "Error",   Message = "Notification de type error",   Type = "error",   Duration = 4 })
-end)
+local function getMyPets()
+    local out = {}
+    for _, obj in ipairs(myPlot:GetDescendants()) do
+        if obj:IsA("Model") and obj:GetAttribute("PetKey") ~= nil then
+            if obj:GetAttribute("PetOwner") == player.Name then
+                table.insert(out, obj)
+            end
+        end
+    end
+    return out
+end
 
-print("[VoidUI Test] Script chargé. Touch/clic le bouton flottant à gauche, ouvre les onglets, scroll, minimise.")
+TabCtrl:AddLabel("Auto-Pet Treat")
+local treatingPet     = false
+local stopTreatingPet = false
+TabCtrl:AddToggle({
+    Label   = "Enable Auto-Pet Treat",
+    Default = false,
+    Callback = function(state)
+        if state then
+            if treatingPet then return end
+            treatingPet = true; stopTreatingPet = false
+            task.spawn(function()
+                while not stopTreatingPet do
+                    local pets = getMyPets()
+                    if #pets > 0 then
+                        for _, pet in ipairs(pets) do
+                            if stopTreatingPet then break end
+                            local boosted = pet:GetAttribute("PetBoosted")
+                            if not boosted then
+                                local tool = getPetTreatFromBackpack()
+                                if tool then
+                                    humanoid:EquipTool(tool)
+                                    task.wait(0.5)
+                                    ReplicatedStorage.Remotes.UsePetTreat:FireServer(pet)
+                                    VoidUI:Notify({ Title = "Pet fed!", Message = pet.Name, Type = "success", Duration = 2 })
+                                    task.wait(0.5)
+                                    humanoid:UnequipTools()
+                                    task.wait(0.1)
+                                else
+                                    task.wait(5)
+                                    break
+                                end
+                            end
+                        end
+                    else
+                        task.wait(5)
+                    end
+                    task.wait(1)
+                end
+                treatingPet = false
+            end)
+        else
+            stopTreatingPet = true
+            VoidUI:Notify({ Title = "Stopped", Message = "Auto-pet treat stopped.", Type = "warning", Duration = 3 })
+        end
+    end,
+})
+
+-- ════════════════════════════════════════════════════════
+--  HELPERS COMPOSTER
+-- ════════════════════════════════════════════════════════
+
+local Composter = ReplicatedStorage.Remotes.Composter
+
+local function formatValue(n)
+    if n >= 1e12 then return string.format("%.2fT", n / 1e12)
+    elseif n >= 1e9 then return string.format("%.2fB", n / 1e9)
+    elseif n >= 1e6 then return string.format("%.2fM", n / 1e6)
+    else return tostring(n) end
+end
+
+-- ════════════════════════════════════════════════════════
+--  TAB SEEDS TO COMPOST
+-- ════════════════════════════════════════════════════════
+
+local TabCompostSeeds = Win:AddTab("Seeds to Compost")
+
+local selectedCompostSeeds = {}
+
+local compostSeedsByRarity = {}
+for _, r in ipairs(rarityOrder) do compostSeedsByRarity[r] = {} end
+
+for _, child in ipairs(seedScrollFrame:GetChildren()) do
+    if child:IsA("Frame") then
+        local icon   = child:FindFirstChild("Icon")
+        local rarity = child:FindFirstChild("RarityName")
+        local sname  = child:FindFirstChild("SeedName")
+        local name   = (sname and sname.Text ~= "???" and sname.Text) or child.Name
+        local rar    = (rarity and rarity.Text) or "Common"
+        local bucket = compostSeedsByRarity[rar] or compostSeedsByRarity["Common"]
+        table.insert(bucket, { Name = name, Icon = icon and icon.Image or "" })
+    end
+end
+
+local compostSeedGroups = {}
+for _, r in ipairs(rarityOrder) do
+    if #compostSeedsByRarity[r] > 0 then
+        table.insert(compostSeedGroups, { Label = r, Items = compostSeedsByRarity[r] })
+    end
+end
+
+local compostSeedGrid = TabCompostSeeds:AddFilteredCardGrid({
+    Groups   = compostSeedGroups,
+    Columns  = 4,
+    Callback = function(sel) selectedCompostSeeds = sel end,
+})
+
+TabCompostSeeds:AddButton({
+    Label    = "Select all (current rarity)",
+    Callback = function()
+        compostSeedGrid:SelectAll()
+        VoidUI:Notify({ Title = "Selection", Message = "All seeds in group selected.", Type = "info", Duration = 2 })
+    end,
+})
+
+TabCompostSeeds:AddButton({
+    Label    = "Deselect all",
+    Callback = function()
+        compostSeedGrid:DeselectAll()
+        VoidUI:Notify({ Title = "Selection", Message = "Selection cleared.", Type = "warning", Duration = 2 })
+    end,
+})
+
+local function getSelectedSeedTools()
+    local out = {}
+    for _, tool in ipairs(player.Backpack:GetChildren()) do
+        if tool:IsA("Tool") and tool:GetAttribute("InventoryCategory") == "Seeds" then
+            local plantName = tool:GetAttribute("Plant") or tool.Name
+            if selectedCompostSeeds[plantName] then
+                local level    = tostring(tool:GetAttribute("Level") or 1)
+                local mutation = tostring(tool:GetAttribute("Mutation") or "Normal")
+                table.insert(out, {
+                    plantName = plantName,
+                    level     = level,
+                    mutation  = mutation,
+                })
+            end
+        end
+    end
+    return out
+end
+
+-- ════════════════════════════════════════════════════════
+--  TAB COMPOSTER
+-- ════════════════════════════════════════════════════════
+
+local TabComposter = Win:AddTab("Composter")
+
+local composterFloor = 3
+local composting     = false
+local stopComposting = false
+
+TabComposter:AddLabel("Floor selection")
+
+TabComposter:AddDropdown({
+    Label    = "Composter floor",
+    Options  = { "Floor 3", "Floor 2" },
+    Callback = function(v)
+        composterFloor = (v == "Floor 2") and 2 or 3
+        VoidUI:Notify({ Title = "Composter", Message = "Now targeting " .. v, Type = "info", Duration = 2 })
+    end,
+})
+
+TabComposter:AddLabel("Uses seeds selected in 'Seeds to Compost' tab")
+
+local function runCompostLoop()
+    while not stopComposting do
+        local seedTools = getSelectedSeedTools()
+
+        if #seedTools == 0 then
+            task.wait(5)
+            continue
+        end
+
+        for _, entry in ipairs(seedTools) do
+            if stopComposting then break end
+
+            local seedKey = entry.plantName .. "_" .. entry.level .. "_" .. entry.mutation
+
+            local ok, err = pcall(function()
+                Composter.InsertSeed:InvokeServer(composterFloor, seedKey, 1)
+            end)
+
+            if not ok then
+                VoidUI:Notify({ Title = "Error", Message = "InsertSeed failed: " .. tostring(err), Type = "error", Duration = 3 })
+                task.wait(0.5)
+                continue
+            end
+
+            task.wait(0.2)
+
+            local state = nil
+            pcall(function()
+                state = Composter.RequestState:InvokeServer(composterFloor)
+            end)
+
+            if not state then task.wait(0.3); continue end
+
+            local shouldPull = false
+
+            if state.TooRich then
+                shouldPull = true
+                VoidUI:Notify({ Title = "Composter F" .. composterFloor, Message = "TooRich! Pulling lever... (" .. formatValue(state.Value) .. ")", Type = "success", Duration = 3 })
+            elseif composterFloor == 3 and state.Value >= 25e12 then
+                shouldPull = true
+                VoidUI:Notify({ Title = "Composter F3", Message = "25T reached! Pulling lever... (" .. formatValue(state.Value) .. ")", Type = "success", Duration = 3 })
+            end
+
+            if shouldPull then
+                pcall(function()
+                    Composter.PullLever:InvokeServer(composterFloor)
+                end)
+                task.wait(1)
+                break
+            end
+
+            task.wait(0.1)
+        end
+    end
+    composting = false
+end
+
+TabComposter:AddLabel("Auto-Compost")
+
+TabComposter:AddToggle({
+    Label    = "Enable Auto-Compost",
+    Default  = false,
+    Callback = function(state)
+        if state then
+            if composting then return end
+            composting = true; stopComposting = false
+            task.spawn(runCompostLoop)
+            VoidUI:Notify({ Title = "Composter", Message = "Auto-compost started on Floor " .. composterFloor, Type = "success", Duration = 3 })
+        else
+            stopComposting = true
+            VoidUI:Notify({ Title = "Composter", Message = "Auto-compost stopped.", Type = "warning", Duration = 3 })
+        end
+    end,
+})
+
+TabComposter:AddButton({
+    Label    = "Insert once (all selected seeds)",
+    Colors   = { Color3.fromRGB(130, 80, 255), Color3.fromRGB(220, 80, 160) },
+    Callback = function()
+        task.spawn(function()
+            local seedTools = getSelectedSeedTools()
+            if #seedTools == 0 then
+                VoidUI:Notify({ Title = "Composter", Message = "No seeds selected/found in backpack.", Type = "warning", Duration = 3 })
+                return
+            end
+            local inserted = 0
+            for _, entry in ipairs(seedTools) do
+                local seedKey = entry.plantName .. "_" .. entry.level .. "_" .. entry.mutation
+                pcall(function()
+                    Composter.InsertSeed:InvokeServer(composterFloor, seedKey, 1)
+                end)
+                inserted += 1
+                task.wait(0.15)
+            end
+            VoidUI:Notify({ Title = "Composter", Message = inserted .. " seed(s) inserted into Floor " .. composterFloor, Type = "success", Duration = 3 })
+        end)
+    end,
+})
+
+TabComposter:AddLabel("Check state")
+
+TabComposter:AddButton({
+    Label    = "Request State (current floor)",
+    Callback = function()
+        task.spawn(function()
+            local state = nil
+            pcall(function()
+                state = Composter.RequestState:InvokeServer(composterFloor)
+            end)
+            if state then
+                VoidUI:Notify({
+                    Title   = "Floor " .. composterFloor .. " State",
+                    Message = "Value: " .. formatValue(state.Value or 0) .. " | TooRich: " .. tostring(state.TooRich or false),
+                    Type    = "info",
+                    Duration = 5,
+                })
+            else
+                VoidUI:Notify({ Title = "Error", Message = "Could not get state.", Type = "error", Duration = 3 })
+            end
+        end)
+    end,
+})
+
+-- ════════════════════════════════════════════════════════
+--  TAB SELL PETS
+-- ════════════════════════════════════════════════════════
+
+local TabSellPets = Win:AddTab("Sell Pets")
+
+local selectedPets = {}
+
+local petScrollFrame = Players.LocalPlayer.PlayerGui.MainUI.Menus.IndexFrame.Main.PetsFrame
+
+local petItems = {}
+
+for _, child in ipairs(petScrollFrame:GetChildren()) do
+    if child:IsA("Frame") then
+        local icon   = child:FindFirstChild("Icon")
+        local sname  = child:FindFirstChild("SeedName")
+        local rarity = child:FindFirstChild("RarityName")
+        local name   = (sname and sname.Text ~= "???" and sname.Text) or child.Name
+        local rar    = rarity and rarity.Text or ""
+        local displayName = (rar ~= "") and (name .. " (" .. rar .. ")") or name
+        table.insert(petItems, { Name = name, Icon = icon and icon.Image or "", Display = displayName })
+    end
+end
+
+TabSellPets:AddLabel("Select pets to sell")
+
+TabSellPets:AddCardGrid({
+    Items    = petItems,
+    Columns  = 4,
+    Callback = function(sel) selectedPets = sel end,
+})
+
+TabSellPets:AddButton({
+    Label    = "Deselect all",
+    Callback = function()
+        selectedPets = {}
+        VoidUI:Notify({ Title = "Selection", Message = "Selection cleared.", Type = "warning", Duration = 2 })
+    end,
+})
+
+local sellingPets     = false
+local stopSellingPets = false
+
+local function getSelectedPetTools()
+    local out = {}
+    for _, tool in ipairs(player.Backpack:GetChildren()) do
+        if tool:IsA("Tool") and tool:GetAttribute("InventoryCategory") == "Pets" then
+            local trueName = tool:GetAttribute("trueName") or tool.Name
+            local petKey   = tool:GetAttribute("petKey")
+            if selectedPets[trueName] and petKey then
+                table.insert(out, { trueName = trueName, petKey = petKey })
+            end
+        end
+    end
+    return out
+end
+
+TabSellPets:AddLabel("Auto-Sell")
+
+TabSellPets:AddToggle({
+    Label    = "Enable Auto-Sell Pets",
+    Default  = false,
+    Callback = function(state)
+        if state then
+            if sellingPets then return end
+            sellingPets = true; stopSellingPets = false
+            task.spawn(function()
+                while not stopSellingPets do
+                    local pets = getSelectedPetTools()
+                    for _, entry in ipairs(pets) do
+                        if stopSellingPets then break end
+                        local ok, err = pcall(function()
+                            ReplicatedStorage.Remotes.SellPet:InvokeServer(entry.petKey)
+                        end)
+                        if ok then
+                            VoidUI:Notify({ Title = "Pet sold!", Message = entry.trueName, Type = "success", Duration = 2 })
+                        else
+                            VoidUI:Notify({ Title = "Error", Message = "SellPet failed: " .. tostring(err), Type = "error", Duration = 3 })
+                        end
+                        task.wait(0.3)
+                    end
+                    task.wait(2)
+                end
+                sellingPets = false
+            end)
+            VoidUI:Notify({ Title = "Sell Pets", Message = "Auto-sell started.", Type = "success", Duration = 3 })
+        else
+            stopSellingPets = true
+            VoidUI:Notify({ Title = "Sell Pets", Message = "Auto-sell stopped.", Type = "warning", Duration = 3 })
+        end
+    end,
+})
+
+TabSellPets:AddButton({
+    Label    = "Sell now (one shot)",
+    Colors   = { Color3.fromRGB(130, 80, 255), Color3.fromRGB(220, 80, 160) },
+    Callback = function()
+        task.spawn(function()
+            local pets = getSelectedPetTools()
+            if #pets == 0 then
+                VoidUI:Notify({ Title = "Sell Pets", Message = "No matching pets in backpack.", Type = "warning", Duration = 3 })
+                return
+            end
+            local sold = 0
+            for _, entry in ipairs(pets) do
+                local ok = pcall(function()
+                    ReplicatedStorage.Remotes.SellPet:InvokeServer(entry.petKey)
+                end)
+                if ok then sold += 1 end
+                task.wait(0.3)
+            end
+            VoidUI:Notify({ Title = "Sell Pets", Message = sold .. " pet(s) sold.", Type = "success", Duration = 3 })
+        end)
+    end,
+})
+
+-- ════════════════════════════════════════════════════════
+--  TAB PETS (OPTIMIZE)
+-- ════════════════════════════════════════════════════════
+
+local TabPets = Win:AddTab("Pets")
+
+local optimizing     = false
+local stopOptimizing = false
+
+TabPets:AddLabel("Auto-Optimize Pets")
+
+TabPets:AddToggle({
+    Label    = "Enable Auto-Optimize",
+    Default  = false,
+    Callback = function(state)
+        if state then
+            if optimizing then return end
+            optimizing = true; stopOptimizing = false
+            task.spawn(function()
+                while not stopOptimizing do
+                    optimizePets()
+                    local elapsed = 0
+                    while elapsed < 30 and not stopOptimizing do
+                        task.wait(1)
+                        elapsed += 1
+                    end
+                end
+                optimizing = false
+            end)
+            VoidUI:Notify({ Title = "Pets", Message = "Auto-optimize started.", Type = "success", Duration = 3 })
+        else
+            stopOptimizing = true
+            VoidUI:Notify({ Title = "Pets", Message = "Auto-optimize stopped.", Type = "warning", Duration = 3 })
+        end
+    end,
+})
+
+TabPets:AddButton({
+    Label    = "Optimize now",
+    Colors   = { Color3.fromRGB(130, 80, 255), Color3.fromRGB(220, 80, 160) },
+    Callback = function()
+        task.spawn(optimizePets)
+    end,
+})
+
+-- ════════════════════════════════════════════════════════
+--  TAB INFO
+-- ════════════════════════════════════════════════════════
+local TabInfo = Win:AddTab("Info")
+TabInfo:AddLabel("Detected plot")
+TabInfo:AddButton({ Label = myPlot.Name, Callback = function() end })
+TabInfo:AddLabel("Stands on startup")
+for name, idx in pairs(getWorldSeeds()) do
+    TabInfo:AddLabel(name .. "  →  Stand " .. idx)
+end
+TabInfo:AddLabel("Eggs on startup")
+for _, egg in ipairs(initialEggs) do
+    TabInfo:AddLabel("Podium " .. egg.podiumIdx .. "  →  " .. egg.name)
+end
+end)
