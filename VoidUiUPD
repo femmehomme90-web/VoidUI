@@ -448,9 +448,19 @@ end
 function VoidUI:CreateWindow(cfg)
     cfg = cfg or {}
     local title       = cfg.Title       or "VoidUI"
-    local size        = WIN_SIZE
-    local tabPosition = cfg.TabPosition or "top"   -- "top" ou "side"
-    local pillIcon    = cfg.Icon        or ""       -- rbxassetid://... pour la pill
+    local tabPosition = cfg.TabPosition or "top"
+    local pillIcon    = cfg.Icon        or ""
+
+    -- Détection mobile
+    local _tempSg = Instance.new("ScreenGui")
+    pcall(function() _tempSg.Parent = game:GetService("CoreGui") end)
+    local useMobileSizing = _tempSg.AbsoluteSize.X < 1024 and _tempSg.AbsoluteSize.Y < 768
+    _tempSg:Destroy()
+
+    local WIN_W    = 580
+    local WIN_H    = useMobileSizing and 280 or 440
+    local WIN_SIZE = UDim2.new(0, WIN_W, 0, WIN_H)
+    local size     = WIN_SIZE
 
     -- ScreenGui
     local sg = Instance.new("ScreenGui")
