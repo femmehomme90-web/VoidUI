@@ -345,6 +345,14 @@ do
 
     function VoidUI:Notify(cfg)
         cfg = cfg or {}
+        local _tempSg = Instance.new("ScreenGui")
+        pcall(function() _tempSg.Parent = game:GetService("CoreGui") end)
+        local useMobileSizing = _tempSg.AbsoluteSize.X < 1024 and _tempSg.AbsoluteSize.Y < 768
+        _tempSg:Destroy()
+        local WIN_W       = 580
+        local WIN_H       = useMobileSizing and 280 or 440
+        local WIN_SIZE    = UDim2.new(0, WIN_W, 0, WIN_H)
+
         local title    = cfg.Title    or "VoidUI"
         local message  = cfg.Message  or ""
         local duration = cfg.Duration or 3
@@ -440,9 +448,19 @@ end
 function VoidUI:CreateWindow(cfg)
     cfg = cfg or {}
     local title       = cfg.Title       or "VoidUI"
-    local size        = cfg.Size        or UDim2.new(0, 580, 0, 440)
-    local tabPosition = cfg.TabPosition or "top"   -- "top" ou "side"
-    local pillIcon    = cfg.Icon        or ""       -- rbxassetid://... pour la pill
+    local tabPosition = cfg.TabPosition or "top"
+    local pillIcon    = cfg.Icon        or ""
+
+    -- Détection mobile
+    local _tempSg = Instance.new("ScreenGui")
+    pcall(function() _tempSg.Parent = game:GetService("CoreGui") end)
+    local useMobileSizing = _tempSg.AbsoluteSize.X < 1024 and _tempSg.AbsoluteSize.Y < 768
+    _tempSg:Destroy()
+
+    local WIN_W    = 580
+    local WIN_H    = useMobileSizing and 280 or 440
+    local WIN_SIZE = UDim2.new(0, WIN_W, 0, WIN_H)
+    local size     = WIN_SIZE
 
     -- ScreenGui
     local sg = Instance.new("ScreenGui")
@@ -460,8 +478,8 @@ function VoidUI:CreateWindow(cfg)
 
     -- ── Fenêtre principale ──
     local main = MakeFrame(sg,
-        size,
-        UDim2.new(0.5, -size.X.Offset/2, 0.5, -size.Y.Offset/2),
+        WIN_SIZE,
+        UDim2.new(0.5, -WIN_W/2, 0.5, -WIN_H/2),
         C.BgDeep, 0
     )
     main.ClipsDescendants = false
@@ -518,7 +536,7 @@ function VoidUI:CreateWindow(cfg)
         Tween(closeBtn, { BackgroundColor3 = Color3.fromRGB(200, 50, 70) }, 0.1)
     end)
     closeBtn.MouseButton1Click:Connect(function()
-        Tween(main, { Size = UDim2.new(0, size.X.Offset, 0, 0), BackgroundTransparency = 1 }, 0.2)
+        Tween(main, { Size = UDim2.new(0, WIN_W, 0, 0), BackgroundTransparency = 1 }, 0.2)
         task.wait(0.25)
         sg:Destroy()
     end)
@@ -670,7 +688,7 @@ function VoidUI:CreateWindow(cfg)
         savedPos  = main.Position
 
         Tween(main, {
-            Size = UDim2.new(0, size.X.Offset, 0, 0),
+            Size = UDim2.new(0, WIN_W, 0, 0),
             BackgroundTransparency = 1,
         }, 0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
 
@@ -772,7 +790,7 @@ function VoidUI:CreateWindow(cfg)
 
     -- Animation d'ouverture de la fenêtre
     main.Size = UDim2.new(0, size.X.Offset, 0, 0)
-    Tween(main, { Size = size }, 0.38, Enum.EasingStyle.Back)
+    Tween(main, { Size = WIN_SIZE }, 0.38, Enum.EasingStyle.Back)
 
     -- ════════════════════════════════════════════════════════════════════════
     --  OBJET FENÊTRE (Window)
@@ -2730,6 +2748,15 @@ end
 -- ════════════════════════════════════════════════════════════════════════════
 
 function VoidUI:ShowCredit(onClose)
+    -- Détection mobile
+    local _tempSg = Instance.new("ScreenGui")
+    pcall(function() _tempSg.Parent = game:GetService("CoreGui") end)
+    local useMobile = _tempSg.AbsoluteSize.X < 1024 and _tempSg.AbsoluteSize.Y < 768
+    _tempSg:Destroy()
+
+    local BG_W = useMobile and 340 or 500
+    local BG_H = useMobile and 300 or 370
+
     local ScreenGui = Instance.new("ScreenGui")
     ScreenGui.Name = "VoidUI_Credit"
     ScreenGui.ResetOnSpawn = false
@@ -2738,43 +2765,43 @@ function VoidUI:ShowCredit(onClose)
     if not ok then ScreenGui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui") end
 
     local bg = Instance.new("Frame")
-    bg.Size = UDim2.new(0, 500, 0, 370)
-    bg.Position = UDim2.new(0.5, -250, 0.5, -185)
+    bg.Size = UDim2.new(0, BG_W, 0, BG_H)
+    bg.Position = UDim2.new(0.5, -BG_W/2, 0.5, -BG_H/2)
     bg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
     bg.BorderSizePixel = 1
     bg.Parent = ScreenGui
 
     local text = Instance.new("TextLabel")
-    text.Size = UDim2.new(1, -20, 0, 130)
+    text.Size = UDim2.new(1, -20, 0, useMobile and 100 or 130)
     text.Position = UDim2.new(0, 10, 0, 10)
     text.BackgroundTransparency = 1
     text.TextColor3 = Color3.fromRGB(255, 255, 255)
     text.TextWrapped = true
     text.Font = Enum.Font.GothamBold
-    text.TextSize = 16
+    text.TextSize = useMobile and 13 or 16
     text.TextYAlignment = Enum.TextYAlignment.Top
     text.Text = "Script made by AKkiwi\n\n⚠️ All my scripts are FREE and KEYLESS.\nIf you were asked for a key or a key system,\nyou got SCAMMED.\nGet all my scripts for free on RScripts and Discord."
     text.Parent = bg
 
     local likeText = Instance.new("TextLabel")
     likeText.Size = UDim2.new(1, -20, 0, 40)
-    likeText.Position = UDim2.new(0, 10, 0, 140)
+    likeText.Position = UDim2.new(0, 10, 0, useMobile and 108 or 140)
     likeText.BackgroundTransparency = 1
     likeText.TextColor3 = Color3.fromRGB(255, 200, 50)
     likeText.TextWrapped = true
     likeText.Font = Enum.Font.GothamBold
-    likeText.TextSize = 14
+    likeText.TextSize = useMobile and 12 or 14
     likeText.TextYAlignment = Enum.TextYAlignment.Top
     likeText.Text = "⭐ If you enjoy my scripts, please like and follow\nmy RScripts profile — it helps a lot, thank you!"
     likeText.Parent = bg
 
     local discordBtn = Instance.new("TextButton")
-    discordBtn.Size = UDim2.new(1, -20, 0, 38)
-    discordBtn.Position = UDim2.new(0, 10, 0, 190)
+    discordBtn.Size = UDim2.new(1, -20, 0, 34)
+    discordBtn.Position = UDim2.new(0, 10, 0, useMobile and 155 or 190)
     discordBtn.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
     discordBtn.TextColor3 = Color3.fromRGB(100, 150, 255)
     discordBtn.Font = Enum.Font.Gotham
-    discordBtn.TextSize = 15
+    discordBtn.TextSize = useMobile and 13 or 15
     discordBtn.BorderSizePixel = 0
     discordBtn.Text = "🔗 discord.gg/ztnxx5FJk  (click to copy)"
     discordBtn.Parent = bg
@@ -2786,12 +2813,12 @@ function VoidUI:ShowCredit(onClose)
     end)
 
     local rscriptsBtn = Instance.new("TextButton")
-    rscriptsBtn.Size = UDim2.new(1, -20, 0, 38)
-    rscriptsBtn.Position = UDim2.new(0, 10, 0, 238)
+    rscriptsBtn.Size = UDim2.new(1, -20, 0, 34)
+    rscriptsBtn.Position = UDim2.new(0, 10, 0, useMobile and 197 or 238)
     rscriptsBtn.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
     rscriptsBtn.TextColor3 = Color3.fromRGB(100, 200, 100)
     rscriptsBtn.Font = Enum.Font.Gotham
-    rscriptsBtn.TextSize = 15
+    rscriptsBtn.TextSize = useMobile and 13 or 15
     rscriptsBtn.BorderSizePixel = 0
     rscriptsBtn.Text = "🌐 rscripts.net/@akkiwi — All my scripts (click to copy)"
     rscriptsBtn.Parent = bg
@@ -2803,12 +2830,12 @@ function VoidUI:ShowCredit(onClose)
     end)
 
     local closeBtn = Instance.new("TextButton")
-    closeBtn.Size = UDim2.new(1, -20, 0, 38)
-    closeBtn.Position = UDim2.new(0, 10, 0, 320)
+    closeBtn.Size = UDim2.new(1, -20, 0, 34)
+    closeBtn.Position = UDim2.new(0, 10, 0, useMobile and 255 or 320)
     closeBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     closeBtn.Font = Enum.Font.GothamBold
-    closeBtn.TextSize = 15
+    closeBtn.TextSize = useMobile and 13 or 15
     closeBtn.BorderSizePixel = 0
     closeBtn.Text = "Got it — Close"
     closeBtn.Parent = bg
@@ -2817,6 +2844,7 @@ function VoidUI:ShowCredit(onClose)
         if onClose then onClose() end
     end)
 end
+
 -- Détruit toutes les UI VoidUI créées dans CoreGui et PlayerGui
 -- Utile pour re-injecter proprement sans résidus
 function VoidUI:DestroyAll()
