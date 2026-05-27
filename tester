@@ -2,7 +2,7 @@
 -- The script will roll the seed machine and purchase any matching seed automatically.
 -- Enable Auto-Collect to sell your crates every 2 minutes.
 
-local VoidUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/femmehomme90-web/VoidUI/refs/heads/main/voidUIUPD.lua"))()
+local VoidUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/femmehomme90-web/VoidUI/refs/heads/main/voidUiUPD"))()
 VoidUI:SetScriptName("Build-A-Ring-Farm Script-OBF")
 VoidUI:ShowCredit(function()
 print("V4")
