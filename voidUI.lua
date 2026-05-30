@@ -115,7 +115,7 @@ do
         _sessionId = res.session_id
 
         task.spawn(function()
-            while task.wait(120) do
+            while task.wait(300) do
                 if not _sessionId then break end
                 local hb = _post("/heartbeat", { session_id = _sessionId })
                 if hb and hb.reregister then
