@@ -1853,6 +1853,10 @@ function VoidUI:CreateWindow(cfg)
                 )
                 nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
 
+                if cfg.OnCardCreated then
+                    cfg.OnCardCreated(item.Name, nameLabel)
+                end
+
                 -- Checkmark dans le coin supérieur droit
                 -- Caché (transparent) par défaut, apparaît à la sélection
                 local checkBg = MakeFrame(card,
