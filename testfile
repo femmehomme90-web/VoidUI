@@ -1,0 +1,5748 @@
+-- BUILD: v43.0 Auto Promote · Inverted protect/favorite · (v42 base)
+--[[
+	Grow A Chicken Fighter
+	AKkiwi — RayVoid UI Build
+
+	Pure game logic. All UI, theming and config persistence are handled
+	by RayVoid itself (ConfigurationSaving + Flags). No custom
+	Library/Window/Section/Config/file-system code lives in this file.
+
+	Place as ONE LocalScript.
+]]
+
+--========================================================
+-- SERVICES
+--========================================================
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CollectionService = game:GetService("CollectionService")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+local function scriptAlive()
+	return player.Parent ~= nil
+end
+
+--========================================================
+-- REMOTE / GAME CONFIG
+--========================================================
+
+local Remotes = ReplicatedStorage:WaitForChild("Remotes")
+local HatchEgg = Remotes:WaitForChild("HatchEgg")
+-- Batch hatch (jusqu'à roster.hatch.batchMax = 10). Ajouté par l'update
+-- "incubator" — absent des builds plus anciennes, donc FindFirstChild.
+local HatchEggs = Remotes:FindFirstChild("HatchEggs")
+local PetChicken = Remotes:WaitForChild("PetChicken")
+local SetChickenFavorite = Remotes:FindFirstChild("SetChickenFavorite")
+-- PromoteChicken(targetId, {consumeIds}) — sacrifie des poulets de MÊME
+-- typeId dans une cible pour lui donner une étoile (cf. Promotions /
+-- PromotionView). Ajouté par une update — FindFirstChild.
+local PromoteChicken = Remotes:FindFirstChild("PromoteChicken")
+local Rebirth = Remotes:WaitForChild("Rebirth")
+local BuyGenerator = Remotes:WaitForChild("BuyGenerator")
+local UpgradeGenerator = Remotes:WaitForChild("UpgradeGenerator")
+local ExpandCoop = Remotes:FindFirstChild("ExpandCoop")
+	or game:FindFirstChild("ExpandCoop", true)
+
+local TowerStart = Remotes:WaitForChild("TowerStart")
+local TowerElevator = Remotes:WaitForChild("TowerElevator")
+local TowerSurrender = Remotes:WaitForChild("TowerSurrender")
+local TowerContinueDecline = Remotes:WaitForChild("TowerContinueDecline")
+
+local SellChickens = Remotes:WaitForChild("SellChickens")
+local FuseChickens = Remotes:WaitForChild("FuseChickens")
+
+-- Paliers de rareté du jeu, dans l'ordre officiel (Content.Catalog.Rarity.rank).
+local RARITY_TIERS = {
+	"common",
+	"uncommon",
+	"rare",
+	"epic",
+	"legendary",
+	"mythic",
+	"divine",
+	"celestial",
+	"cosmic",
+	"secret",
+}
+
+-- Paliers d'oeufs "ladder" (achetés en Coins, pas depuis l'inventaire) —
+-- ReplicatedStorage.Content.GameConfig.roster.eggLadder : feed(0) storm(15)
+-- crown(35) golden(60). "barn" est l'oeuf starter gratuit pondu au nid.
+-- "auto" = laisse EggLadder.resolve() choisir le palier selon la progression.
+local EGG_LADDER_AUTO = "auto"
+local LADDER_EGG_TIERS = { EGG_LADDER_AUTO, "feed", "barn", "storm", "crown", "golden" }
+
+-- Compat : l'ancien worker Auto Open itérait EGG_TYPES.
+local EGG_TYPES = { "feed", "storm", "crown", "golden" }
+
+-- Noms lisibles de tous les oeufs du Catalog (ReplicatedStorage.Content.Catalog.eggs)
+-- pour les libellés / le multi-select "Hatch Inventory".
+local EGG_NAMES = {
+	feed = "Scratch", barn = "Nest", storm = "Thunder", crown = "Royal",
+	golden = "Fortune", void = "Void", meme = "Cursed", arena = "Arena",
+	bloom = "Bloom", fang = "Fang", diner = "Diner", ordnance = "Ordnance",
+	circuit = "Circuit", haunt = "Haunt", charm = "Charm", colossus = "Colossus",
+	hotEgg = "Blazing", blessed = "Blessed", ascension = "Ascension",
+	demonic = "Demonic", trick = "Trick", rival = "Grudge",
+}
+
+-- Ordre stable pour les dropdowns (event/granted eggs en fin de liste).
+local ALL_EGG_IDS = {
+	"feed", "barn", "storm", "crown", "golden", "void", "meme", "arena",
+	"bloom", "fang", "diner", "ordnance", "circuit", "haunt", "charm",
+	"colossus", "hotEgg", "blessed", "ascension", "demonic", "trick", "rival",
+}
+
+local function eggLabel(id)
+	local name = EGG_NAMES[id]
+	if name then
+		return name .. " (" .. id .. ")"
+	end
+	return id
+end
+
+-- Noms lisibles des world events (GameConfig.worldEvents.defs) pour le
+-- panneau Events. L'event UFO abduct 4 poulets, mute leurs gènes (bonus de
+-- puissance permanent) et empoisonne temporairement — 100% serveur, aucun
+-- remote client à "claim", les oeufs largués sont des NestEgg normaux que
+-- l'Auto Collect Egg ramasse déjà.
+local WORLD_EVENT_NAMES = {
+	ufo = "UFO Invasion",
+	hotEgg = "Hot Egg",
+	goldenGoose = "Golden Goose",
+	chickenBoss = "Chicken Boss",
+	tradeMachine = "Chicken Trade",
+}
+
+local AUTO_EGG_DELAY = 0.225
+
+--========================================================
+-- HELPERS PARTAGÉS
+--========================================================
+
+-- :Set d'un Paragraph RayVoid ne fait que réécrire deux .Text, mais quand
+-- c'est appelé 10-20x/s dans une boucle chaude (statuts AutoFarm, statut
+-- upgrade feeder) ça force un reflow du TabPage à chaque frame — une des
+-- causes des micro-freezes signalés pendant l'AutoFarm. On ne pousse le
+-- :Set que si le texte change réellement.
+local function setParagraph(obj, title, content)
+	if not obj then return end
+	if obj._pgTitle == title and obj._pgContent == content then return end
+	obj._pgTitle, obj._pgContent = title, content
+	obj:Set({ Title = title, Content = content })
+end
+
+-- Cache de require() paresseux pour les modules du jeu partagés entre
+-- plusieurs contrôleurs (coop, oeufs, events). Même esprit que les
+-- safeRequire par contrôleur ailleurs dans ce fichier, mais mutualisé
+-- pour éviter 3 copies du même require.
+local GameModules = (function()
+	local cache = {}
+
+	local function safeRequire(inst)
+		if not inst or not inst:IsA("ModuleScript") then return nil end
+		local ok, result = pcall(require, inst)
+		if not ok then return nil end
+		return result
+	end
+
+	local function findModule(path)
+		local cur = game
+		for seg in string.gmatch(path, "[^%.]+") do
+			cur = cur:FindFirstChild(seg)
+			if not cur then return nil end
+		end
+		return cur
+	end
+
+	return {
+		get = function(key, path)
+			local hit = cache[key]
+			if hit ~= nil then
+				return hit or nil
+			end
+			local mod = safeRequire(findModule(path))
+			cache[key] = mod or false
+			return mod
+		end,
+	}
+end)()
+
+local dataControllerCache = nil
+local function getDataController()
+	if dataControllerCache ~= nil then
+		return dataControllerCache or nil
+	end
+	local playerScripts = player:FindFirstChild("PlayerScripts")
+	local core = playerScripts and playerScripts:FindFirstChild("Core")
+	local data = core and core:FindFirstChild("Data")
+	local moduleScript = data and data:FindFirstChild("DataController")
+	local mod = nil
+	if moduleScript and moduleScript:IsA("ModuleScript") then
+		local ok, result = pcall(require, moduleScript)
+		if ok then mod = result end
+	end
+	dataControllerCache = mod or false
+	return mod
+end
+
+-- money() renvoie un BigNum-like ({toNumber=...}) — le comparer directement
+-- à un coût numérique planterait. Renvoie toujours un number (0 si indispo).
+local function getMoneyNumber()
+	local dc = getDataController()
+	if type(dc) ~= "table" or type(dc.money) ~= "function" then return 0 end
+	local ok, m = pcall(dc.money)
+	if not ok then return 0 end
+	if type(m) == "table" and type(m.toNumber) == "function" then
+		local ok2, n = pcall(m.toNumber, m)
+		return ok2 and tonumber(n) or 0
+	end
+	return tonumber(m) or 0
+end
+
+-- true si on peut se payer `cost` avec `money` (number). `cost` peut être un
+-- number OU un BigNum-like ({toNumber}) selon le Curve du jeu à haut niveau ;
+-- si on ne sait pas trancher on renvoie true (on ne bloque pas l'action).
+local function canAfford(cost, money)
+	if type(cost) == "number" then
+		return money >= cost
+	end
+	if type(cost) == "table" and type(cost.toNumber) == "function" then
+		local ok, n = pcall(cost.toNumber, cost)
+		if ok and type(n) == "number" then
+			return money >= n
+		end
+	end
+	return true
+end
+
+--========================================================
+-- RAYVOID UI
+--========================================================
+
+local Ui = loadstring(game:HttpGet("https://raw.githubusercontent.com/csgo1compte-cloud/RayVoidUi/refs/heads/main/RayVoid"))()
+Ui:MainCredit()
+Ui:SetScriptName("Grow-a-Chicken-Fighter")
+
+local Window = Ui:CreateWindow({
+	Name = "Grow-a-Chicken-Fighter | AKkiwi HUB",
+	LoadingTitle = "Grow-a-Chicken-Fighter Script",
+	LoadingSubtitle = "by AKkiwi",
+	ConfigurationSaving = {
+		Enabled = true,
+		FileName = "Grow-a-Chicken-Fighter",
+	},
+})
+
+-- Tab créé maintenant (ordre visuel), rempli plus bas une fois que
+-- tous les composants Auto existent (AutomationController en dépend).
+local automationTab = Window:CreateTab("AutoFarm")
+local autoTab = Window:CreateTab("Auto")
+local arenaTab = Window:CreateTab("Arena")
+local eggsTab = Window:CreateTab("Eggs")
+local chickensTab = Window:CreateTab("Chickens")
+local eventsTab = Window:CreateTab("Events")
+
+-- Partagé entre AutoTowerController et AutomationController :
+-- true quand le toggle "Automation" (AutoFarm) est actif.
+local AutomationEnabledFlag = false
+
+--========================================================
+-- AUTO PET CHICKEN
+--========================================================
+
+local autoPetEnabled = false
+local autoPetCPS = 2
+local autoPetWorkerToken = 0
+
+local function getAutoPetDelay()
+	return 0.5 / math.clamp(autoPetCPS, 1, 100)
+end
+
+local function invalidateAutoPetWorker()
+	autoPetWorkerToken = autoPetWorkerToken + 1
+end
+
+local function petChickenOnce()
+	if not PetChicken
+		or not PetChicken.Parent
+		or not PetChicken:IsA("RemoteEvent") then
+
+		return false, "PetChicken RemoteEvent unavailable"
+	end
+
+	local success, result = pcall(function()
+		PetChicken:FireServer()
+	end)
+
+	if not success then
+		return false, result
+	end
+
+	return true
+end
+
+local function startAutoPetWorker()
+	invalidateAutoPetWorker()
+	local token = autoPetWorkerToken
+
+	if not autoPetEnabled then
+		return
+	end
+
+	task.spawn(function()
+		while autoPetEnabled
+			and token == autoPetWorkerToken
+			and scriptAlive() do
+
+			petChickenOnce()
+			task.wait(getAutoPetDelay())
+		end
+	end)
+end
+
+autoTab:CreateSection("Auto Pet Chicken")
+
+autoTab:CreateSlider({
+	Name = "Pet CPS",
+	Range = {1, 100},
+	Increment = 1,
+	CurrentValue = autoPetCPS,
+	Flag = "AutoPetCPS",
+
+	Callback = function(value)
+		autoPetCPS = value
+	end,
+})
+
+local autoPetToggle = autoTab:CreateToggle({
+	Name = "Auto Pet",
+	CurrentValue = autoPetEnabled,
+	Flag = "AutoPetEnabled",
+
+	Callback = function(enabled)
+		autoPetEnabled = enabled
+
+		if enabled then
+			startAutoPetWorker()
+		else
+			invalidateAutoPetWorker()
+		end
+	end,
+})
+
+--========================================================
+-- AUTO REBIRTH
+--========================================================
+
+local autoRebirthEnabled = false
+local autoRebirthWorkerToken = 0
+local AUTO_REBIRTH_DELAY = 0.5
+
+local function invalidateAutoRebirthWorker()
+	autoRebirthWorkerToken = autoRebirthWorkerToken + 1
+end
+
+local function rebirthOnce()
+	-- RebirthController uses:
+	--   Remotes.invoke(Remotes.defs.Rebirth)
+	-- Prefer that exact game API.
+	local coreFolder =
+		ReplicatedStorage:FindFirstChild("Core")
+
+	local coreRemotesModule =
+		coreFolder
+		and coreFolder:FindFirstChild("Remotes")
+
+	if coreRemotesModule
+		and coreRemotesModule:IsA("ModuleScript") then
+
+		local requireOk, coreRemotes =
+			pcall(require, coreRemotesModule)
+
+		if requireOk
+			and type(coreRemotes) == "table"
+			and type(coreRemotes.invoke) == "function"
+			and type(coreRemotes.defs) == "table"
+			and coreRemotes.defs.Rebirth ~= nil then
+
+			local invokeOk, result =
+				pcall(function()
+					return coreRemotes.invoke(
+						coreRemotes.defs.Rebirth
+					)
+				end)
+
+			if invokeOk then
+				if type(result) == "table" then
+					return result.ok == true, result
+				end
+
+				return result ~= false
+					and result ~= nil,
+					result
+			end
+		end
+	end
+
+	-- Compatibility fallback for the raw RemoteFunction.
+	if not Rebirth
+		or not Rebirth.Parent
+		or not Rebirth:IsA("RemoteFunction") then
+
+		return false, "Rebirth remote unavailable"
+	end
+
+	local success, result = pcall(function()
+		return Rebirth:InvokeServer()
+	end)
+
+	if not success or result == false then
+		return false, result
+	end
+
+	return true, result
+end
+
+local function startAutoRebirthWorker()
+	invalidateAutoRebirthWorker()
+	local token = autoRebirthWorkerToken
+
+	if not autoRebirthEnabled then
+		return
+	end
+
+	task.spawn(function()
+		while autoRebirthEnabled
+			and token == autoRebirthWorkerToken
+			and scriptAlive() do
+
+			rebirthOnce()
+			task.wait(AUTO_REBIRTH_DELAY)
+		end
+	end)
+end
+
+local autoRebirthToggle = autoTab:CreateToggle({
+	Name = "Auto Rebirth",
+	CurrentValue = autoRebirthEnabled,
+	Flag = "AutoRebirthEnabled",
+
+	Callback = function(enabled)
+		autoRebirthEnabled = enabled
+
+		if enabled then
+			startAutoRebirthWorker()
+		else
+			invalidateAutoRebirthWorker()
+		end
+	end,
+})
+
+--========================================================
+-- COOP SNAPSHOT — état réel des générateurs du coop
+--
+-- Avant : les 3 workers coop (Upgrade / Buy / Expand) tiraient
+-- UpgradeGenerator / BuyGenerator / ExpandCoop en boucle 0.10s sur les IDs
+-- 1..6 en dur, sans jamais regarder si le feeder existe, s'il est déjà max,
+-- ou si on a les Coins. Résultat pendant l'AutoFarm : ~35-40
+-- RemoteFunction:InvokeServer par seconde (dont la moitié sur des slots
+-- inexistants), la file de remotes Roblox sature -> micro-freezes. C'est la
+-- cause des lags "au moment de l'amélioration automatique".
+--
+-- Maintenant : on lit l'état RÉPLIQUÉ du coop
+-- (DataService.client:get({"coop"})) et on ne tire un remote QUE pour une
+-- action réellement possible (feeder pas max ET abordable / slot achetable
+-- ET abordable / expand possible ET abordable). Quand il n'y a rien à
+-- faire, zéro trafic remote, la boucle dort.
+--========================================================
+
+local CoopSnapshot = (function()
+	local clientCache, coopViewCache, genCfgCache
+
+	local function getClient()
+		if clientCache ~= nil then return clientCache or nil end
+		local ds = GameModules.get("DataService", "ReplicatedStorage.Packages.DataService")
+		clientCache = (type(ds) == "table" and ds.client) or false
+		return clientCache or nil
+	end
+
+	local function getCoopView()
+		if coopViewCache ~= nil then return coopViewCache or nil end
+		coopViewCache = GameModules.get("CoopView", "ReplicatedStorage.Features.Coop.CoopView") or false
+		return coopViewCache or nil
+	end
+
+	local function getGenCfg()
+		if genCfgCache ~= nil then return genCfgCache or nil end
+		local gc = GameModules.get("GameConfig", "ReplicatedStorage.Content.GameConfig")
+		genCfgCache = (type(gc) == "table" and type(gc.generators) == "table" and gc.generators) or false
+		return genCfgCache or nil
+	end
+
+	return {
+		-- nil tant que l'état répliqué n'est pas prêt.
+		get = function()
+			local client = getClient()
+			local coopView = getCoopView()
+			local genCfg = getGenCfg()
+			if not client or not coopView or not genCfg then return nil end
+
+			local ok, coop = pcall(function() return client:get({ "coop" }) end)
+			if not ok or type(coop) ~= "table" or type(coop.generators) ~= "table" then
+				return nil
+			end
+
+			local generators = {}
+			for _, g in ipairs(coop.generators) do
+				local slot = tonumber(g.slot)
+				local level = tonumber(g.level)
+				if slot and level then
+					table.insert(generators, {
+						slot = slot, level = level, corn = tonumber(g.corn) or 0,
+					})
+				end
+			end
+
+			return {
+				generators = generators,
+				feeders = #generators,
+				slots = tonumber(coop.slots) or #generators,
+				money = getMoneyNumber(),
+				maxLevel = tonumber(genCfg.maxLevel) or 50,
+				maxSlots = tonumber(genCfg.maxSlots) or 6,
+				upgradeCost = function(level)
+					local okc, c = pcall(coopView.upgradeCost, level)
+					return okc and c or nil
+				end,
+				buyGeneratorCost = function(feederCount)
+					local okc, c = pcall(coopView.buyGeneratorCost, feederCount)
+					return okc and c or nil
+				end,
+				expandCost = function(slots)
+					local okc, c = pcall(coopView.expandCost, slots)
+					return okc and c or nil
+				end,
+				canBuyGenerator = function(slots, feederCount)
+					local okc, v = pcall(coopView.canBuyGenerator, slots, feederCount)
+					return okc and v == true
+				end,
+				canExpand = function(slots)
+					local okc, v = pcall(coopView.canExpand, slots)
+					return okc and v == true
+				end,
+			}
+		end,
+	}
+end)()
+
+--========================================================
+-- AUTO UPGRADE FEEDER
+--========================================================
+
+local autoBuyFeederEnabled = false
+local autoUpgradeFeederCPS = 5
+local autoBuyFeederWorkerToken = 0
+
+-- Pré-déclaré : assigné plus bas (après le slider/toggle, pour l'ordre
+-- visuel), mais startAutoBuyFeederWorker le référence avant ce point.
+-- Sans ce forward-declare, Lua résoudrait la référence en globale (nil)
+-- au lieu de capturer la bonne locale — même piège que
+-- updateFloorStatuses/markRebirthComplete plus bas dans ce fichier.
+local upgradeFeederStatus
+
+-- Bornes de slot du coop (1..maxSlots). Servent uniquement à clamp l'ID
+-- envoyé au remote ; la liste réelle vient de CoopSnapshot.
+local AUTO_UPGRADE_FEEDER_MIN_ID = 1
+local AUTO_UPGRADE_FEEDER_MAX_ID = 6
+
+-- Délai entre deux upgrades. AutoFarm garde un rythme serré (0.10s) — sans
+-- danger maintenant qu'on ne tire plus rien sur les feeders déjà max.
+local function getAutoUpgradeFeederDelay()
+	if Window.AutomationRunning then
+		return 0.10
+	end
+
+	return 0.5 / math.clamp(autoUpgradeFeederCPS, 1, 50)
+end
+
+-- Boucle "rien à faire" : on dort ce délai sans tirer AUCUN remote.
+local AUTO_COOP_IDLE_DELAY = 1.0
+
+local function invalidateAutoBuyFeederWorker()
+	autoBuyFeederWorkerToken = autoBuyFeederWorkerToken + 1
+end
+
+local UPGRADE_FEEDER_REMOTE_TIMEOUT = 5
+
+-- InvokeServer bloque la coroutine appelante indéfiniment si le serveur ne
+-- répond jamais (même défaut que ArenaFight, voir la section Auto Arena
+-- plus bas) — borne l'attente pour ne jamais geler cette boucle. Renvoie
+-- aussi le temps de réponse réel : la lenteur rapportée sur cette feature
+-- ("~1 upgrade/s par ID") est très probablement ce délai serveur, pas la
+-- boucle elle-même (qui n'ajoute que getAutoUpgradeFeederDelay() en plus).
+local function invokeUpgradeGeneratorWithTimeout(id, timeoutSeconds)
+	local done = false
+	local ok, result
+
+	task.spawn(function()
+		ok, result = pcall(function()
+			return UpgradeGenerator:InvokeServer(id)
+		end)
+		done = true
+	end)
+
+	local startedAt = os.clock()
+	local waited = 0
+
+	while not done and waited < timeoutSeconds do
+		task.wait(0.05)
+		waited = waited + 0.05
+	end
+
+	local elapsedMs = math.floor((os.clock() - startedAt) * 1000 + 0.5)
+
+	if not done then
+		return false, "timeout after " .. tostring(timeoutSeconds) .. "s", elapsedMs
+	end
+
+	return ok, result, elapsedMs
+end
+
+local function upgradeFeederOnce(feederId)
+	if not UpgradeGenerator
+		or not UpgradeGenerator.Parent
+		or not UpgradeGenerator:IsA("RemoteFunction") then
+
+		return false, "UpgradeGenerator RemoteFunction unavailable", 0
+	end
+
+	local id = math.clamp(
+		math.floor(
+			tonumber(feederId)
+				or AUTO_UPGRADE_FEEDER_MIN_ID
+		),
+		AUTO_UPGRADE_FEEDER_MIN_ID,
+		AUTO_UPGRADE_FEEDER_MAX_ID
+	)
+
+	local success, result, elapsedMs =
+		invokeUpgradeGeneratorWithTimeout(id, UPGRADE_FEEDER_REMOTE_TIMEOUT)
+
+	if not success then
+		return false, result, elapsedMs
+	end
+
+	return true, result, elapsedMs
+end
+
+local function startAutoBuyFeederWorker()
+	invalidateAutoBuyFeederWorker()
+	local token = autoBuyFeederWorkerToken
+
+	if not autoBuyFeederEnabled then
+		return
+	end
+
+	task.spawn(function()
+		while autoBuyFeederEnabled
+			and token == autoBuyFeederWorkerToken
+			and scriptAlive() do
+
+			local snap = CoopSnapshot.get()
+
+			if not snap then
+				setParagraph(upgradeFeederStatus, "Upgrade Feeder Status",
+					"Coop data not ready...")
+				task.wait(1)
+			else
+				local money = snap.money
+				local acted, maxed, poor = 0, 0, 0
+
+				for _, gen in ipairs(snap.generators) do
+					if not autoBuyFeederEnabled
+						or token ~= autoBuyFeederWorkerToken
+						or not scriptAlive() then
+						break
+					end
+
+					if gen.level >= snap.maxLevel then
+						maxed = maxed + 1
+					else
+						local cost = snap.upgradeCost(gen.level)
+
+						if not canAfford(cost, money) then
+							poor = poor + 1
+						else
+							local ok, feederResult =
+								upgradeFeederOnce(gen.slot)
+							acted = acted + 1
+							-- Re-lit les Coins pour ne pas surdépenser
+							-- dans une même passe.
+							money = getMoneyNumber()
+
+							if not ok then
+								setParagraph(upgradeFeederStatus,
+									"Upgrade Feeder Status",
+									"slot " .. tostring(gen.slot)
+										.. " · " .. tostring(feederResult))
+							end
+
+							if autoBuyFeederEnabled
+								and token == autoBuyFeederWorkerToken
+								and scriptAlive() then
+								task.wait(getAutoUpgradeFeederDelay())
+							end
+						end
+					end
+				end
+
+				if acted > 0 then
+					setParagraph(upgradeFeederStatus, "Upgrade Feeder Status",
+						"Upgraded " .. tostring(acted) .. " feeder(s) this pass")
+				else
+					local total = #snap.generators
+
+					if total == 0 then
+						setParagraph(upgradeFeederStatus, "Upgrade Feeder Status",
+							"No feeders yet")
+					elseif maxed >= total then
+						setParagraph(upgradeFeederStatus, "Upgrade Feeder Status",
+							"All " .. tostring(total) .. " feeders maxed (Lv "
+								.. tostring(snap.maxLevel) .. ")")
+					else
+						setParagraph(upgradeFeederStatus, "Upgrade Feeder Status",
+							"Waiting for Coins · " .. tostring(poor)
+								.. " feeder(s) pending")
+					end
+
+					-- Rien à faire : on dort, AUCUN remote tiré.
+					task.wait(AUTO_COOP_IDLE_DELAY)
+				end
+			end
+		end
+	end)
+end
+
+autoTab:CreateSection("Auto Upgrade Feeder")
+
+autoTab:CreateSlider({
+	Name = "Upgrade CPS",
+	Range = {1, 50},
+	Increment = 1,
+	CurrentValue = autoUpgradeFeederCPS,
+	Flag = "AutoUpgradeFeederCPS",
+
+	Callback = function(value)
+		autoUpgradeFeederCPS = value
+	end,
+})
+
+-- Statut lisible : combien de feeders upgradés à la dernière passe, ou
+-- pourquoi la boucle est au repos (tous max / pas assez de Coins). Au
+-- repos = zéro RemoteFunction tirée.
+upgradeFeederStatus = autoTab:CreateParagraph({
+	Title = "Upgrade Feeder Status",
+	Content = "Idle",
+})
+
+local autoBuyFeederToggle = autoTab:CreateToggle({
+	Name = "Auto Upgrade Feeder",
+	CurrentValue = autoBuyFeederEnabled,
+	Flag = "AutoBuyFeederEnabled",
+
+	Callback = function(enabled)
+		autoBuyFeederEnabled = enabled
+
+		if enabled then
+			startAutoBuyFeederWorker()
+		else
+			invalidateAutoBuyFeederWorker()
+		end
+	end,
+})
+
+--========================================================
+-- AUTO BUY FEEDER
+--========================================================
+
+local autoPurchaseFeederEnabled = false
+local autoPurchaseFeederWorkerToken = 0
+
+local AUTO_PURCHASE_FEEDER_MIN_ID = 1
+local AUTO_PURCHASE_FEEDER_MAX_ID = 6
+local AUTO_PURCHASE_FEEDER_STEP_DELAY = 0.10
+local AUTO_PURCHASE_FEEDER_CYCLE_DELAY = 0.10
+
+local function invalidateAutoPurchaseFeederWorker()
+	autoPurchaseFeederWorkerToken = autoPurchaseFeederWorkerToken + 1
+end
+
+local function purchaseFeederOnce(feederId)
+	if not BuyGenerator
+		or not BuyGenerator.Parent
+		or not BuyGenerator:IsA("RemoteFunction") then
+
+		return false, "BuyGenerator RemoteFunction unavailable"
+	end
+
+	local id = math.clamp(
+		math.floor(
+			tonumber(feederId)
+				or AUTO_PURCHASE_FEEDER_MIN_ID
+		),
+		AUTO_PURCHASE_FEEDER_MIN_ID,
+		AUTO_PURCHASE_FEEDER_MAX_ID
+	)
+
+	local success, result = pcall(function()
+		return BuyGenerator:InvokeServer(id)
+	end)
+
+	if not success or result == false then
+		return false, result
+	end
+
+	return true, result
+end
+
+local function startAutoPurchaseFeederWorker()
+	invalidateAutoPurchaseFeederWorker()
+	local token = autoPurchaseFeederWorkerToken
+
+	if not autoPurchaseFeederEnabled then
+		return
+	end
+
+	task.spawn(function()
+		while autoPurchaseFeederEnabled
+			and token == autoPurchaseFeederWorkerToken
+			and scriptAlive() do
+
+			local snap = CoopSnapshot.get()
+
+			-- On n'achète un générateur QUE quand le jeu dit que c'est
+			-- possible (slots libres) ET qu'on peut le payer. Avant :
+			-- 12 BuyGenerator:InvokeServer/s en dur sur des IDs 1..6
+			-- (dont la plupart rejetés). Maintenant : 1 invoke ciblé,
+			-- puis repos.
+			local didBuy = false
+
+			if snap
+				and snap.canBuyGenerator(snap.slots, snap.feeders)
+				and canAfford(snap.buyGeneratorCost(snap.feeders), snap.money) then
+
+				local nextSlot = math.clamp(
+					snap.feeders + 1,
+					AUTO_PURCHASE_FEEDER_MIN_ID,
+					AUTO_PURCHASE_FEEDER_MAX_ID
+				)
+
+				purchaseFeederOnce(nextSlot)
+				didBuy = true
+			end
+
+			if autoPurchaseFeederEnabled
+				and token == autoPurchaseFeederWorkerToken
+				and scriptAlive() then
+
+				task.wait(didBuy and AUTO_PURCHASE_FEEDER_CYCLE_DELAY or AUTO_COOP_IDLE_DELAY)
+			end
+		end
+	end)
+end
+
+local autoPurchaseFeederToggle = autoTab:CreateToggle({
+	Name = "Auto Buy Feeder",
+	CurrentValue = autoPurchaseFeederEnabled,
+	Flag = "AutoPurchaseFeederEnabled",
+
+	Callback = function(enabled)
+		autoPurchaseFeederEnabled = enabled
+
+		if enabled then
+			startAutoPurchaseFeederWorker()
+		else
+			invalidateAutoPurchaseFeederWorker()
+		end
+	end,
+})
+
+--========================================================
+-- AUTO EXPAND COOP
+--========================================================
+
+local autoExpandCoopEnabled = false
+local autoExpandCoopWorkerToken = 0
+local AUTO_EXPAND_COOP_DELAY = 0.10
+
+local function invalidateAutoExpandCoopWorker()
+	autoExpandCoopWorkerToken = autoExpandCoopWorkerToken + 1
+end
+
+local function expandCoopOnce()
+	if not ExpandCoop
+		or not ExpandCoop.Parent
+		or not ExpandCoop:IsA("RemoteFunction") then
+
+		return false, "ExpandCoop RemoteFunction unavailable"
+	end
+
+	local success, result = pcall(function()
+		return ExpandCoop:InvokeServer()
+	end)
+
+	if not success then
+		return false, result
+	end
+
+	return true, result
+end
+
+local function startAutoExpandCoopWorker()
+	invalidateAutoExpandCoopWorker()
+	local token = autoExpandCoopWorkerToken
+
+	if not autoExpandCoopEnabled then
+		return
+	end
+
+	task.spawn(function()
+		while autoExpandCoopEnabled
+			and token == autoExpandCoopWorkerToken
+			and scriptAlive() do
+
+			local snap = CoopSnapshot.get()
+
+			-- Expand UNIQUEMENT si le jeu dit que c'est possible
+			-- (slots < maxSlots) ET qu'on peut le payer. Avant :
+			-- ExpandCoop:InvokeServer() toutes les 0.10s à vie, même
+			-- coop déjà max -> ~10 RemoteFunction/s pour rien.
+			local didExpand = false
+
+			if snap
+				and snap.canExpand(snap.slots)
+				and canAfford(snap.expandCost(snap.slots), snap.money) then
+
+				expandCoopOnce()
+				didExpand = true
+			end
+
+			task.wait(didExpand and AUTO_EXPAND_COOP_DELAY or AUTO_COOP_IDLE_DELAY)
+		end
+	end)
+end
+
+local autoExpandCoopToggle = autoTab:CreateToggle({
+	Name = "Auto Expand Coop",
+	CurrentValue = autoExpandCoopEnabled,
+	Flag = "AutoExpandCoopEnabled",
+
+	Callback = function(enabled)
+		autoExpandCoopEnabled = enabled
+
+		if enabled then
+			startAutoExpandCoopWorker()
+		else
+			invalidateAutoExpandCoopWorker()
+		end
+	end,
+})
+
+--========================================================
+-- AUTO TOWER
+--========================================================
+
+local AutoTowerController = (function()
+
+local autoTowerEnabled = false
+local autoTowerStartChoice = "Priority FRONTIER"
+local autoTowerSurrenderEnabled = false
+local autoTowerSurrenderFloor = 60
+local autoTowerNoThanksEnabled = false
+
+local autoTowerWorkerToken = 0
+local autoTowerSurrenderWorkerToken = 0
+local autoTowerNoThanksWorkerToken = 0
+local autoTowerSurrenderTriggered = false
+
+-- true entre un TowerStart réussi et un TowerSurrender réussi.
+-- workspace.TowerStackN existe en permanence (même à 0 enfants hors
+-- combat), donc son contenu seul ne suffit pas à savoir si on est
+-- réellement en train de fighter : ce flag est la source de vérité.
+local towerSessionActive = false
+
+local AUTO_TOWER_START_RETRY_DELAY = 1.0
+local AUTO_TOWER_SURRENDER_CHECK_DELAY = 0.1
+local AUTO_TOWER_NO_THANKS_DELAY = 0.2
+
+local TOWER_START_CHOICES = {
+	"Priority FRONTIER",
+	"Priority STRAIGHT",
+	"Only BOTTOM",
+}
+
+local function invalidateAutoTowerWorker()
+	autoTowerWorkerToken = autoTowerWorkerToken + 1
+end
+
+local function invalidateAutoTowerSurrenderWorker()
+	autoTowerSurrenderWorkerToken = autoTowerSurrenderWorkerToken + 1
+end
+
+local function invalidateAutoTowerNoThanksWorker()
+	autoTowerNoThanksWorkerToken = autoTowerNoThanksWorkerToken + 1
+end
+
+local function safeRequire(moduleScript)
+	if not moduleScript or not moduleScript:IsA("ModuleScript") then
+		return nil
+	end
+
+	local ok, result = pcall(require, moduleScript)
+	if not ok then
+		return nil
+	end
+
+	return result
+end
+
+local towerSupportCache = nil
+
+local function getTowerSupport()
+	if towerSupportCache ~= nil then
+		return towerSupportCache
+	end
+
+	local playerScripts = player:FindFirstChild("PlayerScripts")
+	if not playerScripts then
+		return nil
+	end
+
+	local core = playerScripts:FindFirstChild("Core")
+	local dataFolder = core and core:FindFirstChild("Data")
+	local dataControllerModule = dataFolder
+		and dataFolder:FindFirstChild("DataController")
+
+	local uiFolder = playerScripts:FindFirstChild("UI")
+	local twoD = uiFolder and uiFolder:FindFirstChild("2d")
+	local shop = twoD and twoD:FindFirstChild("Shop")
+	local shopWindow = shop and shop:FindFirstChild("ShopWindow")
+	local catalogModule = shopWindow
+		and shopWindow:FindFirstChild("catalog")
+
+	local content = ReplicatedStorage:FindFirstChild("Content")
+	local gameConfigModule = content
+		and content:FindFirstChild("GameConfig")
+
+	local coreStorage = ReplicatedStorage:FindFirstChild("Core")
+	local numModule = coreStorage
+		and coreStorage:FindFirstChild("Num")
+
+	local dataController = safeRequire(dataControllerModule)
+	local gameConfig = safeRequire(gameConfigModule)
+	local num = safeRequire(numModule)
+	local catalog = safeRequire(catalogModule)
+
+	if not dataController
+		or not gameConfig
+		or not num
+		or not catalog then
+
+		return nil
+	end
+
+	towerSupportCache = {
+		DataController = dataController,
+		GameConfig = gameConfig,
+		Num = num,
+		Catalog = catalog,
+	}
+
+	return towerSupportCache
+end
+
+local function callDataGetter(fn)
+	if type(fn) ~= "function" then
+		return nil
+	end
+
+	local ok, result = pcall(fn)
+	if not ok then
+		return nil
+	end
+
+	return result
+end
+
+local function buildElevatorContext()
+	local support = getTowerSupport()
+	if not support then
+		return nil
+	end
+
+	local dataController = support.DataController
+	local gameConfig = support.GameConfig
+	local num = support.Num
+	local catalog = support.Catalog
+
+	local premium = gameConfig.premium
+	if type(premium) ~= "table"
+		or type(premium.elevator) ~= "table" then
+
+		return nil
+	end
+
+	if premium.elevator.enabled ~= true then
+		return {
+			applicable = false,
+		}
+	end
+
+	local chicken = callDataGetter(dataController.chicken)
+	local chickenLevel = 0
+
+	if type(chicken) == "table" then
+		chickenLevel = tonumber(chicken.level) or 0
+	end
+
+	local towerBest = tonumber(
+		callDataGetter(dataController.towerBest)
+			or 0
+	) or 0
+
+	local minFloor = tonumber(
+		premium.elevator.minFloor
+			or 1
+	) or 1
+
+	local applicable = chickenLevel >= 2
+		and towerBest >= minFloor + 1
+
+	if not applicable then
+		return {
+			applicable = false,
+			towerBest = towerBest,
+			minFloor = minFloor,
+		}
+	end
+
+	local purchases = callDataGetter(dataController.purchases)
+	local elevatorVip = false
+
+	if type(purchases) == "table"
+		and type(purchases.passes) == "table" then
+
+		elevatorVip = purchases.passes.elevatorVip == true
+	end
+
+	local money = callDataGetter(dataController.money)
+
+	local elevatorData = {
+		restricted = true,
+		prices = {},
+		owned = {
+			elevatorVip = elevatorVip,
+		},
+		towerBest = towerBest,
+		rewardFloor = towerBest,
+		boosts = {
+			money = 0,
+			corn = 0,
+		},
+	}
+
+	local frontierFloor = towerBest + 1
+	local warmUpFloor = math.max(
+		minFloor,
+		towerBest - 4
+	)
+
+	local function canAfford(floor)
+		if money == nil
+			or type(catalog.elevatorCost) ~= "function"
+			or type(num.from) ~= "function"
+			or type(num.ratio) ~= "function" then
+
+			return false
+		end
+
+		local ok, affordable = pcall(function()
+			local cost = catalog.elevatorCost(
+				elevatorData,
+				floor
+			)
+
+			local denominator = num.from(
+				math.max(1, cost)
+			)
+
+			return num.ratio(
+				money,
+				denominator
+			) >= 1
+		end)
+
+		return ok and affordable == true
+	end
+
+	return {
+		applicable = true,
+		towerBest = towerBest,
+		minFloor = minFloor,
+		frontierFloor = frontierFloor,
+		warmUpFloor = warmUpFloor,
+		frontierAffordable = canAfford(frontierFloor),
+		warmUpAffordable = canAfford(warmUpFloor),
+	}
+end
+
+-- InvokeServer bloque la coroutine appelante indéfiniment si le serveur
+-- ne répond jamais (pas d'erreur, juste un silence permanent). pcall
+-- seul ne protège pas contre ça : il attend avec l'appel. On isole donc
+-- l'InvokeServer dans sa propre coroutine et on poll un flag avec un
+-- budget de temps -> la boucle appelante n'est jamais bloquée plus de
+-- timeoutSeconds, même si le serveur ne répond jamais.
+local function invokeWithTimeout(remote, timeoutSeconds, ...)
+	local args = {...}
+	local done = false
+	local ok, result
+
+	task.spawn(function()
+		ok, result = pcall(function()
+			return remote:InvokeServer(unpack(args))
+		end)
+		done = true
+	end)
+
+	local waited = 0
+
+	while not done and waited < timeoutSeconds do
+		task.wait(0.1)
+		waited = waited + 0.1
+	end
+
+	if not done then
+		return false, "TIMEOUT after " .. tostring(timeoutSeconds) .. "s"
+	end
+
+	return ok, result
+end
+
+local function invokeTowerElevator(floor)
+	if not TowerElevator
+		or not TowerElevator.Parent
+		or not TowerElevator:IsA("RemoteFunction") then
+
+		return false, nil
+	end
+
+	local ok, result =
+		invokeWithTimeout(TowerElevator, 8, floor)
+
+	if not ok then
+		print("[AutoFarm DEBUG] TowerElevator:InvokeServer FAILED/TIMEOUT: " .. tostring(result))
+	end
+
+	return ok, result
+end
+
+local function invokeTowerStart()
+	if not TowerStart
+		or not TowerStart.Parent
+		or not TowerStart:IsA("RemoteFunction") then
+
+		return false, nil
+	end
+
+	local ok, result =
+		invokeWithTimeout(TowerStart, 8)
+
+	if not ok then
+		print("[AutoFarm DEBUG] TowerStart:InvokeServer FAILED/TIMEOUT: " .. tostring(result))
+	end
+
+	if ok then
+		towerSessionActive = true
+	end
+
+	return ok, result
+end
+
+local function startTowerFromBottom()
+	autoTowerSurrenderTriggered = false
+	return invokeTowerStart()
+end
+
+local function startTowerPriorityFrontier()
+	local context = buildElevatorContext()
+
+	if not context or context.applicable ~= true then
+		return startTowerFromBottom()
+	end
+
+	local selectedFloor = nil
+
+	if context.frontierAffordable then
+		selectedFloor = context.frontierFloor
+	elseif context.warmUpAffordable then
+		selectedFloor = context.warmUpFloor
+	end
+
+	if selectedFloor == nil then
+		return startTowerFromBottom()
+	end
+
+	local elevatorOk = invokeTowerElevator(selectedFloor)
+
+	if not elevatorOk then
+		if selectedFloor == context.frontierFloor
+			and context.warmUpAffordable then
+
+			local warmUpOk = invokeTowerElevator(
+				context.warmUpFloor
+			)
+
+			if not warmUpOk then
+				return startTowerFromBottom()
+			end
+		else
+			return startTowerFromBottom()
+		end
+	end
+
+	autoTowerSurrenderTriggered = false
+	task.wait(0.10)
+	return invokeTowerStart()
+end
+
+local function startTowerPriorityStraight()
+	local context = buildElevatorContext()
+
+	if not context or context.applicable ~= true then
+		return startTowerFromBottom()
+	end
+
+	local directFloor = context.frontierFloor
+
+	if not directFloor then
+		return startTowerFromBottom()
+	end
+
+	local elevatorOk = invokeTowerElevator(directFloor)
+
+	if not elevatorOk then
+		return startTowerFromBottom()
+	end
+
+	autoTowerSurrenderTriggered = false
+	task.wait(0.10)
+	return invokeTowerStart()
+end
+
+local function startTowerOnce()
+	if autoTowerStartChoice == "Only BOTTOM" then
+		return startTowerFromBottom()
+	end
+
+	if autoTowerStartChoice == "Priority STRAIGHT" then
+		return startTowerPriorityStraight()
+	end
+
+	return startTowerPriorityFrontier()
+end
+
+local function startAutoTowerWorker()
+	invalidateAutoTowerWorker()
+	local token = autoTowerWorkerToken
+
+	if not autoTowerEnabled then
+		return
+	end
+
+	task.spawn(function()
+		while autoTowerEnabled
+			and token == autoTowerWorkerToken
+			and scriptAlive() do
+
+			startTowerOnce()
+			task.wait(AUTO_TOWER_START_RETRY_DELAY)
+		end
+	end)
+end
+
+-- Current Tower floor discovery.
+-- workspace.TowerStackN (N = player:GetAttribute("Plot")) existe en
+-- permanence, même hors combat, donc son nombre d'enfants seul ne dit
+-- pas si on est réellement en train de fighter. On ne le lit QUE quand
+-- towerSessionActive est vrai (entre un TowerStart et un TowerSurrender
+-- réussis). Le nombre de Parts = étages déjà complétés, donc le poulet
+-- combat actuellement à l'étage (nombre de Parts + 1).
+local lastCurrentTowerFloorSource = nil
+
+local function getTowerStackFolder()
+	local plot = player:GetAttribute("Plot")
+	if plot == nil then
+		return nil
+	end
+
+	return workspace:FindFirstChild("TowerStack" .. tostring(plot))
+end
+
+local function getCurrentTowerFloor()
+	if not towerSessionActive then
+		lastCurrentTowerFloorSource = nil
+		return nil
+	end
+
+	local stack = getTowerStackFolder()
+	local completed = 0
+
+	if stack then
+		for _, child in ipairs(stack:GetChildren()) do
+			if child:IsA("BasePart") then
+				completed = completed + 1
+			end
+		end
+	end
+
+	lastCurrentTowerFloorSource = "TowerStack (session active)"
+	return completed + 1
+end
+
+
+local function surrenderTowerOnce()
+	if not TowerSurrender
+		or not TowerSurrender.Parent
+		or not TowerSurrender:IsA("RemoteFunction") then
+
+		return false, nil
+	end
+
+	local ok, result = pcall(function()
+		return TowerSurrender:InvokeServer()
+	end)
+
+	if ok then
+		towerSessionActive = false
+	end
+
+	return ok, result
+end
+
+local function startAutoTowerSurrenderWorker()
+	invalidateAutoTowerSurrenderWorker()
+
+	local token = autoTowerSurrenderWorkerToken
+
+	if not autoTowerSurrenderEnabled then
+		return
+	end
+
+	task.spawn(function()
+		while autoTowerSurrenderEnabled
+			and token == autoTowerSurrenderWorkerToken
+			and scriptAlive() do
+
+			local targetFloor =
+				math.clamp(
+					math.floor(
+						tonumber(autoTowerSurrenderFloor) or 60
+					),
+					1,
+					9999
+				)
+
+			local currentFloor =
+				getCurrentTowerFloor()
+
+			if currentFloor
+				and currentFloor >= targetFloor then
+
+				autoTowerSurrenderTriggered = true
+				surrenderTowerOnce()
+			else
+				autoTowerSurrenderTriggered = false
+			end
+
+			task.wait(AUTO_TOWER_SURRENDER_CHECK_DELAY)
+		end
+	end)
+end
+
+local function declineTowerContinueOnce()
+	if not TowerContinueDecline
+		or not TowerContinueDecline.Parent
+		or not TowerContinueDecline:IsA("RemoteEvent") then
+
+		return false
+	end
+
+	local ok = pcall(function()
+		TowerContinueDecline:FireServer()
+	end)
+
+	return ok
+end
+
+local function startAutoTowerNoThanksWorker()
+	invalidateAutoTowerNoThanksWorker()
+	local token = autoTowerNoThanksWorkerToken
+
+	if not autoTowerNoThanksEnabled then
+		return
+	end
+
+	task.spawn(function()
+		while autoTowerNoThanksEnabled
+			and token == autoTowerNoThanksWorkerToken
+			and scriptAlive() do
+
+			declineTowerContinueOnce()
+			task.wait(AUTO_TOWER_NO_THANKS_DELAY)
+		end
+	end)
+end
+
+autoTab:CreateSection("Auto Tower")
+
+local autoTowerChoiceDropdown = autoTab:CreateDropdown({
+	Name = "Tower Start Choice",
+	Options = TOWER_START_CHOICES,
+	CurrentOption = autoTowerStartChoice,
+	Flag = "AutoTowerStartChoice",
+
+	Callback = function(option)
+		local value = type(option) == "table" and option[1] or option
+		if value then
+			autoTowerStartChoice = value
+		end
+	end,
+})
+
+local autoTowerMainToggle = autoTab:CreateToggle({
+	Name = "Auto Tower",
+	CurrentValue = autoTowerEnabled,
+	Flag = "AutoTowerEnabled",
+
+	Callback = function(enabled)
+		autoTowerEnabled = enabled
+
+		if enabled then
+			if AutomationEnabledFlag then
+				invalidateAutoTowerWorker()
+			else
+				startAutoTowerWorker()
+			end
+		else
+			invalidateAutoTowerWorker()
+		end
+	end,
+})
+
+autoTab:CreateInput({
+	Name = "Retreat at Floor",
+	PlaceholderText = "1-9999",
+	CurrentValue = tostring(autoTowerSurrenderFloor),
+	Flag = "AutoTowerSurrenderFloor",
+
+	Callback = function(text)
+		local value = math.clamp(
+			math.floor(tonumber(text) or autoTowerSurrenderFloor),
+			1,
+			9999
+		)
+		autoTowerSurrenderFloor = value
+		autoTowerSurrenderTriggered = false
+	end,
+})
+
+local autoTowerSurrenderToggle = autoTab:CreateToggle({
+	Name = "Auto Retreat at Floor",
+	CurrentValue = autoTowerSurrenderEnabled,
+	Flag = "AutoTowerSurrenderEnabled",
+
+	Callback = function(enabled)
+		autoTowerSurrenderEnabled = enabled
+		autoTowerSurrenderTriggered = false
+
+		if enabled then
+			if AutomationEnabledFlag then
+				invalidateAutoTowerSurrenderWorker()
+			else
+				startAutoTowerSurrenderWorker()
+			end
+		else
+			invalidateAutoTowerSurrenderWorker()
+		end
+	end,
+})
+
+local autoTowerNoThanksToggle = autoTab:CreateToggle({
+	Name = "Auto No Thanks Tower",
+	CurrentValue = autoTowerNoThanksEnabled,
+	Flag = "AutoTowerNoThanksEnabled",
+
+	Callback = function(enabled)
+		autoTowerNoThanksEnabled = enabled
+
+		if enabled then
+			startAutoTowerNoThanksWorker()
+		else
+			invalidateAutoTowerNoThanksWorker()
+		end
+	end,
+})
+
+return {
+	StartFromConfig = function()
+		if autoTowerEnabled
+			and not AutomationEnabledFlag then
+
+			startAutoTowerWorker()
+		end
+
+		if autoTowerSurrenderEnabled
+			and not AutomationEnabledFlag then
+
+			startAutoTowerSurrenderWorker()
+		end
+
+		if autoTowerNoThanksEnabled then
+			startAutoTowerNoThanksWorker()
+		end
+	end,
+
+	PauseAutomationWorkers = function()
+		invalidateAutoTowerWorker()
+		invalidateAutoTowerSurrenderWorker()
+		invalidateAutoTowerNoThanksWorker()
+	end,
+
+	ResumeConfiguredWorkers = function()
+		if autoTowerEnabled
+			and not AutomationEnabledFlag then
+
+			startAutoTowerWorker()
+		end
+
+		if autoTowerSurrenderEnabled
+			and not AutomationEnabledFlag then
+
+			startAutoTowerSurrenderWorker()
+		end
+
+		if autoTowerNoThanksEnabled then
+			startAutoTowerNoThanksWorker()
+		end
+	end,
+
+	ForceAutomationOn = function()
+		autoTowerEnabled = true
+		autoTowerSurrenderEnabled = true
+		autoTowerNoThanksEnabled = true
+		autoTowerSurrenderTriggered = false
+
+		autoTowerMainToggle:Set(true)
+		autoTowerSurrenderToggle:Set(true)
+		autoTowerNoThanksToggle:Set(true)
+
+		-- Routine (AutoFarm) seule possède le timing de TowerStart.
+		invalidateAutoTowerWorker()
+
+		startAutoTowerNoThanksWorker()
+
+		invalidateAutoTowerSurrenderWorker()
+	end,
+
+	ForceAutomationOff = function()
+		autoTowerEnabled = false
+		autoTowerSurrenderEnabled = false
+		autoTowerNoThanksEnabled = false
+		autoTowerSurrenderTriggered = false
+
+		autoTowerMainToggle:Set(false)
+		autoTowerSurrenderToggle:Set(false)
+		autoTowerNoThanksToggle:Set(false)
+
+		invalidateAutoTowerWorker()
+		invalidateAutoTowerSurrenderWorker()
+		invalidateAutoTowerNoThanksWorker()
+	end,
+
+	StartOnce = function() return startTowerOnce() end,
+	SurrenderOnce = function() return surrenderTowerOnce() end,
+	DeclineOnce = function() return declineTowerContinueOnce() end,
+	GetCurrentFloor = function()
+		return getCurrentTowerFloor()
+	end,
+
+	GetCurrentFloorSource = function()
+		return lastCurrentTowerFloorSource
+	end,
+
+	Stop = function()
+		autoTowerEnabled = false
+		autoTowerSurrenderEnabled = false
+		autoTowerNoThanksEnabled = false
+		invalidateAutoTowerWorker()
+		invalidateAutoTowerSurrenderWorker()
+		invalidateAutoTowerNoThanksWorker()
+	end,
+}
+end)()
+
+--========================================================
+-- EGGS — HATCH LADDER + HATCH INVENTORY
+--
+-- Deux systèmes d'oeufs distincts dans le jeu :
+--   1. Oeufs "ladder" (feed/storm/crown/golden + barn starter) — hatchés
+--      via HatchEgg:InvokeServer(tier), payés en Coins par le serveur,
+--      pas besoin d'en posséder. "auto" = EggLadder.resolve() choisit le
+--      palier selon la progression (tower best).
+--   2. Oeufs d'inventaire (golden/colossus/void/hotEgg/... — cf.
+--      Content.Catalog.eggs) — accumulés dans roster().eggs = {id=count},
+--      hatchés via HatchEgg (x1) ou HatchEggs:InvokeServer(id, n) (batch,
+--      n <= roster.hatch.batchMax = 10). Consomme l'inventaire.
+--========================================================
+
+local function rosterData()
+	local dc = getDataController()
+	if type(dc) ~= "table" or type(dc.roster) ~= "function" then
+		return nil
+	end
+	local ok, r = pcall(dc.roster)
+	if not ok or type(r) ~= "table" then
+		return nil
+	end
+	return r
+end
+
+local function getOwnedEggs()
+	local r = rosterData()
+	if not r or type(r.eggs) ~= "table" then
+		return {}
+	end
+	return r.eggs
+end
+
+local function hatchEgg(eggName)
+	if not HatchEgg
+		or not HatchEgg.Parent
+		or not HatchEgg:IsA("RemoteFunction") then
+		return false, "HatchEgg RemoteFunction unavailable"
+	end
+
+	local success, result = pcall(function()
+		return HatchEgg:InvokeServer(eggName)
+	end)
+
+	if not success then
+		return false, result
+	end
+
+	return true, result
+end
+
+local function hatchEggsBatch(eggName, count)
+	if not HatchEggs
+		or not HatchEggs.Parent
+		or not HatchEggs:IsA("RemoteFunction") then
+		return hatchEgg(eggName)
+	end
+
+	local n = math.clamp(math.floor(tonumber(count) or 1), 1, 10)
+
+	local success, result = pcall(function()
+		return HatchEggs:InvokeServer(eggName, n)
+	end)
+
+	if not success then
+		return false, result
+	end
+
+	return true, result
+end
+
+--------------------------------------------------
+-- 1) Ladder hatch (Coins)
+--------------------------------------------------
+
+local autoEggEnabled = false
+local ladderTier = EGG_LADDER_AUTO
+local ladderHatchCPS = 5
+local workerToken = 0
+
+local function invalidateWorker()
+	workerToken = workerToken + 1
+end
+
+local function resolveLadderTier()
+	if ladderTier ~= EGG_LADDER_AUTO then
+		return ladderTier
+	end
+
+	-- "auto" -> palier selon la progression, comme le jeu (EggLadder).
+	local ladder = GameModules.get(
+		"EggLadder", "ReplicatedStorage.Features.Chicken.EggLadder"
+	)
+	local dc = getDataController()
+	local best = 0
+	if type(dc) == "table" and type(dc.towerBest) == "function" then
+		local ok, v = pcall(dc.towerBest)
+		if ok then best = tonumber(v) or 0 end
+	end
+
+	if type(ladder) == "table" and type(ladder.resolve) == "function" then
+		local ok, tier = pcall(ladder.resolve, ladder.AUTO or "auto", best)
+		if ok and type(tier) == "string" then
+			return tier
+		end
+	end
+
+	-- Fallback : palier feed/storm/crown/golden selon best (floors 0/15/35/60).
+	if best >= 60 then return "golden" end
+	if best >= 35 then return "crown" end
+	if best >= 15 then return "storm" end
+	return "feed"
+end
+
+eggsTab:CreateSection("Auto Hatch — Ladder Eggs (Coins)")
+
+local eggInventoryStatus = eggsTab:CreateParagraph({
+	Title = "Egg Inventory",
+	Content = "—",
+})
+
+local function startWorker()
+	invalidateWorker()
+	local token = workerToken
+
+	if not autoEggEnabled then
+		return
+	end
+
+	task.spawn(function()
+		while autoEggEnabled
+			and token == workerToken
+			and scriptAlive() do
+
+			hatchEgg(resolveLadderTier())
+			task.wait(0.5 / math.clamp(ladderHatchCPS, 1, 20))
+		end
+	end)
+end
+
+eggsTab:CreateDropdown({
+	Name = "Ladder Tier",
+	Options = LADDER_EGG_TIERS,
+	CurrentOption = ladderTier,
+	Flag = "EggLadderTier",
+
+	Callback = function(option)
+		local value = type(option) == "table" and option[1] or option
+		if not value then return end
+		ladderTier = value
+	end,
+})
+
+eggsTab:CreateSlider({
+	Name = "Ladder Hatch CPS",
+	Range = {1, 20},
+	Increment = 1,
+	CurrentValue = ladderHatchCPS,
+	Flag = "EggHatchCPS",
+
+	Callback = function(value)
+		ladderHatchCPS = value
+	end,
+})
+
+local autoToggle = eggsTab:CreateToggle({
+	Name = "Auto Hatch Ladder",
+	CurrentValue = autoEggEnabled,
+	Flag = "AutoOpenEnabled",
+
+	Callback = function(enabled)
+		autoEggEnabled = enabled
+
+		if enabled then
+			startWorker()
+		else
+			invalidateWorker()
+		end
+	end,
+})
+
+--------------------------------------------------
+-- 2) Inventory hatch (roster().eggs)
+--------------------------------------------------
+
+local autoInvHatchEnabled = false
+local invHatchMode = "All Owned"
+local invHatchSelected = {}
+local invHatchBatch = true
+local invHatchCPS = 4
+local invHatchWorkerToken = 0
+
+local invHatchStatus
+
+local function invalidateInvHatchWorker()
+	invHatchWorkerToken = invHatchWorkerToken + 1
+end
+
+local function invHatchTargets(owned)
+	local targets = {}
+	for _, id in ipairs(ALL_EGG_IDS) do
+		local count = tonumber(owned[id]) or 0
+		if count > 0 then
+			if invHatchMode == "All Owned" or invHatchSelected[id] then
+				table.insert(targets, { id = id, count = count })
+			end
+		end
+	end
+	return targets
+end
+
+local function startInvHatchWorker()
+	invalidateInvHatchWorker()
+	local token = invHatchWorkerToken
+
+	if not autoInvHatchEnabled then
+		return
+	end
+
+	task.spawn(function()
+		while autoInvHatchEnabled
+			and token == invHatchWorkerToken
+			and scriptAlive() do
+
+			local owned = getOwnedEggs()
+			local targets = invHatchTargets(owned)
+
+			if #targets == 0 then
+				setParagraph(invHatchStatus, "Inventory Hatch Status",
+					invHatchMode == "Selected"
+						and "None of the selected eggs owned"
+						or "No inventory eggs")
+				task.wait(2)
+			else
+				for _, target in ipairs(targets) do
+					if not autoInvHatchEnabled
+						or token ~= invHatchWorkerToken
+						or not scriptAlive() then
+						break
+					end
+
+					if invHatchBatch and target.count >= 2 then
+						hatchEggsBatch(target.id, math.min(10, target.count))
+					else
+						hatchEgg(target.id)
+					end
+
+					setParagraph(invHatchStatus, "Inventory Hatch Status",
+						"Hatching " .. eggLabel(target.id)
+							.. " (x" .. tostring(target.count) .. ")")
+
+					task.wait(0.5 / math.clamp(invHatchCPS, 1, 10))
+				end
+			end
+		end
+	end)
+end
+
+eggsTab:CreateSection("Auto Hatch — Inventory Eggs")
+
+eggsTab:CreateParagraph({
+	Title = "Note",
+	Content = "Eggs can't be sold in this game (no remote). To \"auto sell "
+		.. "eggs\": run this + Chickens > Auto Sell (pick the junk rarities) "
+		.. "— it hatches your eggs and sells the low-tier chickens that pop "
+		.. "out, keeping favorites / inverted / active.",
+})
+
+eggsTab:CreateDropdown({
+	Name = "Inventory Mode",
+	Options = {"All Owned", "Selected"},
+	CurrentOption = invHatchMode,
+	Flag = "EggInvMode",
+
+	Callback = function(option)
+		local value = type(option) == "table" and option[1] or option
+		if value then invHatchMode = value end
+	end,
+})
+
+eggsTab:CreateDropdown({
+	Name = "Inventory Egg Types",
+	Options = ALL_EGG_IDS,
+	CurrentOption = {},
+	MultipleOptions = true,
+	Flag = "EggInvTypes",
+
+	Callback = function(options)
+		local selected = {}
+		if type(options) == "table" then
+			for _, id in ipairs(options) do
+				selected[id] = true
+			end
+		elseif type(options) == "string" then
+			selected[options] = true
+		end
+		invHatchSelected = selected
+	end,
+})
+
+eggsTab:CreateToggle({
+	Name = "Batch Hatch (x10)",
+	CurrentValue = invHatchBatch,
+	Flag = "EggInvBatch",
+
+	Callback = function(enabled)
+		invHatchBatch = enabled
+	end,
+})
+
+eggsTab:CreateSlider({
+	Name = "Inventory Hatch CPS",
+	Range = {1, 10},
+	Increment = 1,
+	CurrentValue = invHatchCPS,
+	Flag = "EggInvCPS",
+
+	Callback = function(value)
+		invHatchCPS = value
+	end,
+})
+
+invHatchStatus = eggsTab:CreateParagraph({
+	Title = "Inventory Hatch Status",
+	Content = "Idle",
+})
+
+eggsTab:CreateToggle({
+	Name = "Auto Hatch Inventory",
+	CurrentValue = autoInvHatchEnabled,
+	Flag = "AutoHatchInvEnabled",
+
+	Callback = function(enabled)
+		autoInvHatchEnabled = enabled
+
+		if enabled then
+			startInvHatchWorker()
+		else
+			invalidateInvHatchWorker()
+			setParagraph(invHatchStatus, "Inventory Hatch Status", "Stopped")
+		end
+	end,
+})
+
+-- Lecture légère de l'inventaire d'oeufs (2s) — juste pour le readout,
+-- aucun remote.
+task.spawn(function()
+	while scriptAlive() do
+		local owned = getOwnedEggs()
+		local parts = {}
+		for _, id in ipairs(ALL_EGG_IDS) do
+			local count = tonumber(owned[id]) or 0
+			if count > 0 then
+				table.insert(parts, eggLabel(id) .. " x" .. tostring(count))
+			end
+		end
+		setParagraph(eggInventoryStatus, "Egg Inventory",
+			#parts > 0 and table.concat(parts, "  ·  ") or "No inventory eggs")
+		task.wait(2)
+	end
+end)
+
+--========================================================
+-- AUTO COLLECT EGG — NO TELEPORT / TOUCH TRIGGER
+--
+-- Ramasse les NestEgg (oeufs pondus au nid + oeufs largués par les world
+-- events comme l'UFO / le Hot Egg) via firetouchinterest, sans se
+-- téléporter. Par défaut filtre sur owner == toi ; "Collect Any Owner"
+-- lève ce filtre pour attraper aussi les oeufs d'event non attribués.
+--========================================================
+
+local autoCollectEnabled = false
+local autoCollectAnyOwner = false
+local collectWorkerToken = 0
+
+local COLLECT_SCAN_DELAY = 0.10
+local COLLECT_TOUCH_DELAY = 0.025
+local COLLECT_RETRY_DELAY = 0.10
+
+local function invalidateCollectWorker()
+	collectWorkerToken = collectWorkerToken + 1
+end
+
+local function getCharacterRoot()
+	local character = player.Character
+	if not character then
+		return nil
+	end
+
+	return character:FindFirstChild("HumanoidRootPart")
+end
+
+local function getOwnedNestEggs(rootPart)
+	local eggs = {}
+
+	for _, instance in ipairs(CollectionService:GetTagged("NestEgg")) do
+		if instance:IsA("BasePart")
+			and instance.Parent
+			and (autoCollectAnyOwner
+				or instance:GetAttribute("owner") == player.UserId) then
+
+			table.insert(eggs, instance)
+		end
+	end
+
+	if rootPart then
+		table.sort(eggs, function(a, b)
+			if not a.Parent then
+				return false
+			end
+
+			if not b.Parent then
+				return true
+			end
+
+			return (a.Position - rootPart.Position).Magnitude
+				< (b.Position - rootPart.Position).Magnitude
+		end)
+	end
+
+	return eggs
+end
+
+local function getFireTouchInterest()
+	local env = nil
+
+	if typeof(getgenv) == "function" then
+		local ok, result = pcall(getgenv)
+
+		if ok and type(result) == "table" then
+			env = result
+		end
+	end
+
+	if env and typeof(env.firetouchinterest) == "function" then
+		return env.firetouchinterest
+	end
+
+	if typeof(firetouchinterest) == "function" then
+		return firetouchinterest
+	end
+
+	return nil
+end
+
+local function triggerNestEggTouch(rootPart, eggPart)
+	if not rootPart
+		or not rootPart.Parent
+		or not eggPart
+		or not eggPart.Parent then
+
+		return false, "invalidPart"
+	end
+
+	local touchFunction = getFireTouchInterest()
+
+	if not touchFunction then
+		return false, "firetouchinterestUnavailable"
+	end
+
+	local beginSuccess = pcall(function()
+		touchFunction(rootPart, eggPart, 0)
+	end)
+
+	task.wait(COLLECT_TOUCH_DELAY)
+
+	local endSuccess = pcall(function()
+		touchFunction(rootPart, eggPart, 1)
+	end)
+
+	return beginSuccess and endSuccess
+end
+
+local function startCollectWorker()
+	invalidateCollectWorker()
+
+	local token = collectWorkerToken
+
+	if not autoCollectEnabled then
+		return
+	end
+
+	task.spawn(function()
+		while autoCollectEnabled
+			and token == collectWorkerToken
+			and scriptAlive() do
+
+			local rootPart = getCharacterRoot()
+
+			if not rootPart then
+				task.wait(0.5)
+			else
+				local ownedEggs = getOwnedNestEggs(rootPart)
+				local touchAvailable = getFireTouchInterest() ~= nil
+
+				if #ownedEggs == 0 then
+					task.wait(COLLECT_SCAN_DELAY)
+				elseif not touchAvailable then
+					task.wait(1)
+				else
+					for _, egg in ipairs(ownedEggs) do
+						if not autoCollectEnabled
+							or token ~= collectWorkerToken
+							or not scriptAlive() then
+
+							break
+						end
+
+						local validEgg =
+							egg
+							and egg.Parent
+							and CollectionService:HasTag(egg, "NestEgg")
+							and (autoCollectAnyOwner
+								or egg:GetAttribute("owner") == player.UserId)
+
+						if validEgg then
+							local triggered = triggerNestEggTouch(
+								rootPart,
+								egg
+							)
+
+							if triggered then
+								local started = os.clock()
+
+								while egg.Parent
+									and CollectionService:HasTag(egg, "NestEgg")
+									and os.clock() - started < 0.65
+									and autoCollectEnabled
+									and token == collectWorkerToken do
+
+									task.wait(0.04)
+								end
+							end
+
+							task.wait(COLLECT_RETRY_DELAY)
+						end
+					end
+
+					task.wait(COLLECT_SCAN_DELAY)
+				end
+			end
+		end
+	end)
+end
+
+eggsTab:CreateSection("Auto Collect Egg")
+
+eggsTab:CreateToggle({
+	Name = "Collect Any Owner",
+	CurrentValue = autoCollectAnyOwner,
+	Flag = "AutoCollectAnyOwner",
+
+	Callback = function(enabled)
+		autoCollectAnyOwner = enabled
+	end,
+})
+
+local autoCollectToggle = eggsTab:CreateToggle({
+	Name = "Auto Collect Egg",
+	CurrentValue = autoCollectEnabled,
+	Flag = "AutoCollectEnabled",
+
+	Callback = function(enabled)
+		autoCollectEnabled = enabled
+
+		if enabled then
+			startCollectWorker()
+		else
+			invalidateCollectWorker()
+		end
+	end,
+})
+
+--========================================================
+-- AUTO CHICKEN MANAGEMENT (Sell / Fuse)
+-- Modules du jeu : PlayerScripts.Core.Data.DataController (roster) et
+-- ReplicatedStorage.Content.Catalog (chickenTypes/defaultChickenType, pour
+-- le fallback de rareté des poulets qui n'ont pas de champ .rarity propre —
+-- même filet que ReplicatedStorage.Content.Catalog.CollectionWindow.sellValueOf).
+-- Remotes bruts (SellChickens/FuseChickens), pas de wrapper Core.Remotes,
+-- pour rester cohérent avec HatchEgg/UpgradeGenerator/BuyGenerator plus
+-- haut dans ce fichier.
+--========================================================
+
+local ChickenManagementController = (function()
+
+local chickenSkipFavorites = true
+-- Ne jamais sell / fuse / favorite-off le poulet actif (roster().activeId).
+local chickenProtectActive = true
+-- Ne jamais sell / fuse / consommer un poulet muté (Content.Mutations n'a
+-- qu'une entrée : "inverted", chance 0.5%). Test large `mutation ~= nil`
+-- pour couvrir d'éventuelles futures mutations.
+local chickenProtectInverted = true
+
+local autoSellEnabled = false
+local autoSellRarities = {}
+local autoSellWorkerToken = 0
+local autoSellIntervalSeconds = 5
+-- 0 = pas de limite. Sinon ne sell que les poulets de niveau <= cette valeur
+-- (protège ceux dans lesquels on a investi du level).
+local autoSellMaxLevel = 0
+
+local autoFuseEnabled = false
+local autoFuseRarities = {}
+local autoFuseWorkerToken = 0
+local autoFuseIntervalSeconds = 2
+
+local autoFavoriteEnabled = false
+local autoFavoriteRarities = {}
+local autoFavoriteInverted = false
+local autoFavoriteWorkerToken = 0
+local autoFavoriteIntervalSeconds = 5
+
+-- Auto Promote : monte les étoiles (promo) d'un poulet cible en
+-- sacrifiant ses doublons (même typeId). Reproduit exactement le filtre de
+-- l'UI SacrificePopUp : id ≠ cible, typeId == cible, id ≠ actif, pas favori
+-- — et en plus jamais un poulet muté/protégé. Consomme juste ce qu'il faut
+-- pour UNE étoile par cycle (Promotions.cumulative = false, maxStars = 10).
+local autoPromoteEnabled = false
+local autoPromoteTarget = "Active Chicken"
+local autoPromoteWorkerToken = 0
+local autoPromoteIntervalSeconds = 5
+local autoPromoteMaxStars = 10
+
+local PROMOTE_TARGET_CHOICES = { "Active Chicken", "Highest Rarity" }
+
+local CHICKEN_REMOTE_TIMEOUT = 8
+local AUTO_SELL_BATCH_SIZE = 200
+
+local function invalidateAutoFavoriteWorker()
+	autoFavoriteWorkerToken = autoFavoriteWorkerToken + 1
+end
+
+local function invalidateAutoPromoteWorker()
+	autoPromoteWorkerToken = autoPromoteWorkerToken + 1
+end
+
+local function invalidateAutoSellWorker()
+	autoSellWorkerToken = autoSellWorkerToken + 1
+end
+
+local function invalidateAutoFuseWorker()
+	autoFuseWorkerToken = autoFuseWorkerToken + 1
+end
+
+local function safeRequireChicken(moduleScript)
+	if not moduleScript or not moduleScript:IsA("ModuleScript") then
+		return nil
+	end
+
+	local ok, result = pcall(require, moduleScript)
+	if not ok then
+		return nil
+	end
+
+	return result
+end
+
+-- Caché uniquement en cas de succès, même logique que getArenaSupport
+-- plus bas dans ce fichier : on retente tant que les modules ne sont
+-- pas encore chargés plutôt que de figer un échec définitif.
+local chickenSupportCache = nil
+
+local function getChickenSupport()
+	if chickenSupportCache ~= nil then
+		return chickenSupportCache
+	end
+
+	local playerScripts = player:FindFirstChild("PlayerScripts")
+	local core = playerScripts and playerScripts:FindFirstChild("Core")
+	local dataFolder = core and core:FindFirstChild("Data")
+	local dataControllerModule = dataFolder and dataFolder:FindFirstChild("DataController")
+
+	local content = ReplicatedStorage:FindFirstChild("Content")
+	local catalogModule = content and content:FindFirstChild("Catalog")
+
+	local dataController = safeRequireChicken(dataControllerModule)
+	local catalog = safeRequireChicken(catalogModule)
+
+	if type(dataController) ~= "table"
+		or type(dataController.roster) ~= "function" then
+
+		return nil
+	end
+
+	chickenSupportCache = {
+		DataController = dataController,
+		ChickenTypes = type(catalog) == "table" and catalog.chickenTypes or nil,
+		DefaultChickenType = type(catalog) == "table" and catalog.defaultChickenType or nil,
+	}
+
+	return chickenSupportCache
+end
+
+-- Même repli que CollectionWindow.sellValueOf : un poulet n'a pas
+-- toujours un champ .rarity propre (ex. poulet de base jamais fusionné),
+-- dans ce cas c'est la rareté de son typeId dans le Catalog qui compte.
+local function getChickenRarity(chicken, support)
+	if not chicken then
+		return nil
+	end
+
+	if chicken.rarity then
+		return chicken.rarity
+	end
+
+	local chickenType = nil
+
+	if support and support.ChickenTypes and chicken.typeId then
+		chickenType = support.ChickenTypes[chicken.typeId]
+	end
+
+	if not chickenType and support then
+		chickenType = support.DefaultChickenType
+	end
+
+	return chickenType and chickenType.rarity or nil
+end
+
+-- IMPORTANT (vérifié en lisant DataController.lua directement) :
+-- DataController.roster() ne renvoie PAS un tableau de poulets — c'est
+-- rosterView(client:get({"roster"})), un objet {chickens = {...},
+-- activeId = ..., owned = ..., ownedAbilities = ..., outfits = ...}.
+-- Les poulets sont dans .chickens. Itérer directement sur le retour de
+-- roster() avec ipairs() ne trouve donc jamais rien (table sans partie
+-- tableau) — c'est ce qui faisait que rien n'était jamais détecté.
+local function getRosterChickens(support)
+	if not support or type(support.DataController.roster) ~= "function" then
+		return nil
+	end
+
+	local ok, roster = pcall(support.DataController.roster)
+
+	if not ok or type(roster) ~= "table" or type(roster.chickens) ~= "table" then
+		return nil
+	end
+
+	return roster.chickens
+end
+
+local function getActiveChickenId(support)
+	if not support or type(support.DataController.roster) ~= "function" then
+		return nil
+	end
+
+	local ok, roster = pcall(support.DataController.roster)
+	if not ok or type(roster) ~= "table" then
+		return nil
+	end
+
+	return roster.activeId
+end
+
+-- true si le poulet doit être épargné par sell / fuse / consommation de
+-- promotion (favori protégé, poulet actif protégé, ou poulet muté protégé).
+local function isProtectedChicken(chicken, activeId)
+	if not chicken then
+		return true
+	end
+
+	if chickenSkipFavorites and chicken.favorite == true then
+		return true
+	end
+
+	if chickenProtectActive
+		and activeId ~= nil
+		and chicken.id == activeId then
+		return true
+	end
+
+	if chickenProtectInverted and chicken.mutation ~= nil then
+		return true
+	end
+
+	return false
+end
+
+-- InvokeServer bloque la coroutine appelante indéfiniment si le serveur
+-- ne répond jamais — même défaut que ArenaFight/UpgradeGenerator ailleurs
+-- dans ce fichier. Borne l'attente pour ne jamais geler ces boucles.
+--
+-- FuseChickens reçoit un nil AU MILIEU de ses arguments (id, id, locks,
+-- nil, cosmétique) : un simple {...} + unpack(args) se fierait à #args,
+-- qui est indéfini dès qu'une table a un "trou" (nil suivi d'une valeur
+-- non-nil) — risque réel de perdre le dernier argument. table.pack
+-- capture le vrai compte via .n, table.unpack(args, 1, args.n) le
+-- respecte explicitement.
+local function invokeChickenRemoteWithTimeout(remote, timeoutSeconds, ...)
+	if not remote or not remote.Parent then
+		return false, "remote unavailable"
+	end
+
+	local args = table.pack(...)
+	local done = false
+	local ok, result
+
+	task.spawn(function()
+		ok, result = pcall(function()
+			return remote:InvokeServer(table.unpack(args, 1, args.n))
+		end)
+		done = true
+	end)
+
+	local waited = 0
+
+	while not done and waited < timeoutSeconds do
+		task.wait(0.1)
+		waited = waited + 0.1
+	end
+
+	if not done then
+		return false, "timeout after " .. tostring(timeoutSeconds) .. "s"
+	end
+
+	return ok, result
+end
+
+local function describeRemoteFailure(ok, result)
+	if type(result) == "table" and result.error ~= nil then
+		return tostring(result.error)
+	elseif not ok then
+		return tostring(result)
+	end
+
+	return "unknown"
+end
+
+chickensTab:CreateSection("Chicken Management")
+
+chickensTab:CreateParagraph({
+	Title = "Chicken Management",
+	Content = "Selling is permanent. Skipped everywhere (Sell / Fuse / "
+		.. "Promote-consume): favorites, your active chicken, and Inverted "
+		.. "(mutated) chickens — each toggle below. Auto Favorite marks the "
+		.. "keepers, Auto Promote turns dupes into stars.",
+})
+
+chickensTab:CreateToggle({
+	Name = "Skip Favorites",
+	CurrentValue = chickenSkipFavorites,
+	Flag = "ChickenSkipFavorites",
+
+	Callback = function(enabled)
+		chickenSkipFavorites = enabled
+	end,
+})
+
+chickensTab:CreateToggle({
+	Name = "Protect Active Chicken",
+	CurrentValue = chickenProtectActive,
+	Flag = "ChickenProtectActive",
+
+	Callback = function(enabled)
+		chickenProtectActive = enabled
+	end,
+})
+
+chickensTab:CreateToggle({
+	Name = "Protect Inverted (Mutated)",
+	CurrentValue = chickenProtectInverted,
+	Flag = "ChickenProtectInverted",
+
+	Callback = function(enabled)
+		chickenProtectInverted = enabled
+	end,
+})
+
+--========================================================
+-- Auto Sell
+--========================================================
+
+local sellStatus = chickensTab:CreateParagraph({
+	Title = "Sell Status",
+	Content = "Idle",
+})
+
+local function startAutoSellWorker()
+	invalidateAutoSellWorker()
+	local token = autoSellWorkerToken
+
+	if not autoSellEnabled then
+		return
+	end
+
+	task.spawn(function()
+		while autoSellEnabled
+			and token == autoSellWorkerToken
+			and scriptAlive() do
+
+			local support = getChickenSupport()
+
+			if not support then
+				setParagraph(sellStatus, "Sell Status",
+					"Chicken scripts not found yet...")
+
+				task.wait(2)
+			else
+				local chickens = getRosterChickens(support)
+				local activeId = getActiveChickenId(support)
+				local idsToSell = {}
+
+				if chickens then
+					for _, chicken in ipairs(chickens) do
+						if #idsToSell >= AUTO_SELL_BATCH_SIZE then
+							break
+						end
+
+						if chicken and chicken.id then
+							local rarity = getChickenRarity(chicken, support)
+
+							local level = tonumber(chicken.level) or 1
+							local levelOk =
+								autoSellMaxLevel <= 0
+								or level <= autoSellMaxLevel
+
+							if rarity
+								and autoSellRarities[rarity]
+								and levelOk
+								and not isProtectedChicken(chicken, activeId) then
+
+								table.insert(idsToSell, chicken.id)
+							end
+						end
+					end
+				end
+
+				if #idsToSell == 0 then
+					setParagraph(sellStatus, "Sell Status", "Nothing to sell")
+
+					task.wait(autoSellIntervalSeconds)
+				else
+					local sellOk, sellResult =
+						invokeChickenRemoteWithTimeout(
+							SellChickens,
+							CHICKEN_REMOTE_TIMEOUT,
+							idsToSell
+						)
+
+					if sellOk
+						and type(sellResult) == "table"
+						and sellResult.ok then
+
+						local count =
+							type(sellResult.data) == "table"
+								and sellResult.data.count
+								or #idsToSell
+
+						sellStatus:Set({
+							Title = "Sell Status",
+							Content = "Sold " .. tostring(count) .. " chicken(s)",
+						})
+					else
+						sellStatus:Set({
+							Title = "Sell Status",
+							Content = "Sell failed: "
+								.. describeRemoteFailure(sellOk, sellResult),
+						})
+					end
+
+					task.wait(autoSellIntervalSeconds)
+				end
+			end
+		end
+	end)
+end
+
+chickensTab:CreateSlider({
+	Name = "Sell Interval (s)",
+	Range = {2, 30},
+	Increment = 1,
+	CurrentValue = autoSellIntervalSeconds,
+	Flag = "AutoSellIntervalSeconds",
+
+	Callback = function(value)
+		autoSellIntervalSeconds = value
+	end,
+})
+
+chickensTab:CreateSlider({
+	Name = "Sell Max Level (0 = any)",
+	Range = {0, 100},
+	Increment = 1,
+	CurrentValue = autoSellMaxLevel,
+	Flag = "AutoSellMaxLevel",
+
+	Callback = function(value)
+		autoSellMaxLevel = math.floor(tonumber(value) or 0)
+	end,
+})
+
+chickensTab:CreateDropdown({
+	Name = "Sell Rarities",
+	Options = RARITY_TIERS,
+	CurrentOption = {},
+	MultipleOptions = true,
+	Flag = "AutoSellRarities",
+
+	Callback = function(options)
+		local selected = {}
+
+		if type(options) == "table" then
+			for _, rarityName in ipairs(options) do
+				selected[rarityName] = true
+			end
+		elseif type(options) == "string" then
+			selected[options] = true
+		end
+
+		autoSellRarities = selected
+	end,
+})
+
+chickensTab:CreateToggle({
+	Name = "Auto Sell",
+	CurrentValue = autoSellEnabled,
+	Flag = "AutoSellEnabled",
+
+	Callback = function(enabled)
+		autoSellEnabled = enabled
+
+		if enabled then
+			startAutoSellWorker()
+		else
+			invalidateAutoSellWorker()
+
+			sellStatus:Set({
+				Title = "Sell Status",
+				Content = "Stopped",
+			})
+		end
+	end,
+})
+
+--========================================================
+-- Auto Fuse
+--========================================================
+
+local fuseStatus = chickensTab:CreateParagraph({
+	Title = "Fuse Status",
+	Content = "Idle",
+})
+
+-- Cherche une paire à fusionner DANS UNE MÊME rareté (jamais deux
+-- raretés différentes même si toutes deux cochées) — parcourt les
+-- paliers cochés du moins rare au plus rare.
+local function findFusePair(chickens, support, activeId)
+	for _, rarity in ipairs(RARITY_TIERS) do
+		if autoFuseRarities[rarity] then
+			local first = nil
+
+			for _, chicken in ipairs(chickens) do
+				if chicken and chicken.id then
+					local chickenRarity =
+						getChickenRarity(chicken, support)
+
+					if chickenRarity == rarity
+						and not isProtectedChicken(chicken, activeId) then
+						if not first then
+							first = chicken
+						elseif chicken.id ~= first.id then
+							return first, chicken
+						end
+					end
+				end
+			end
+		end
+	end
+
+	return nil, nil
+end
+
+local function startAutoFuseWorker()
+	invalidateAutoFuseWorker()
+	local token = autoFuseWorkerToken
+
+	if not autoFuseEnabled then
+		return
+	end
+
+	task.spawn(function()
+		while autoFuseEnabled
+			and token == autoFuseWorkerToken
+			and scriptAlive() do
+
+			local support = getChickenSupport()
+
+			if not support then
+				fuseStatus:Set({
+					Title = "Fuse Status",
+					Content = "Chicken scripts not found yet...",
+				})
+
+				task.wait(2)
+			else
+				local chickens = getRosterChickens(support)
+				local activeId = getActiveChickenId(support)
+
+				local chickenA, chickenB = nil, nil
+
+				if chickens then
+					chickenA, chickenB = findFusePair(chickens, support, activeId)
+				end
+
+				if not chickenA or not chickenB then
+					fuseStatus:Set({
+						Title = "Fuse Status",
+						Content = "Not enough matching chickens to fuse",
+					})
+
+					task.wait(autoFuseIntervalSeconds)
+				else
+					-- locks = {} (aucun trait verrouillé), cosmétique
+					-- pris sur chickenA par défaut : reproduit une
+					-- fusion "par défaut" sans passer par l'UI de
+					-- verrouillage de traits (fonctionnalité premium,
+					-- hors scope de cette automatisation).
+					local fuseOk, fuseResult =
+						invokeChickenRemoteWithTimeout(
+							FuseChickens,
+							CHICKEN_REMOTE_TIMEOUT,
+							chickenA.id,
+							chickenB.id,
+							{},
+							nil,
+							"a"
+						)
+
+					if fuseOk
+						and type(fuseResult) == "table"
+						and fuseResult.ok then
+
+						local resultRarity =
+							type(fuseResult.data) == "table"
+								and fuseResult.data.rarity
+								or "?"
+
+						fuseStatus:Set({
+							Title = "Fuse Status",
+							Content = "Fused · result rarity: "
+								.. tostring(resultRarity),
+						})
+					else
+						fuseStatus:Set({
+							Title = "Fuse Status",
+							Content = "Fuse failed: "
+								.. describeRemoteFailure(fuseOk, fuseResult),
+						})
+					end
+
+					task.wait(autoFuseIntervalSeconds)
+				end
+			end
+		end
+	end)
+end
+
+chickensTab:CreateSlider({
+	Name = "Fuse Interval (s)",
+	Range = {1, 30},
+	Increment = 1,
+	CurrentValue = autoFuseIntervalSeconds,
+	Flag = "AutoFuseIntervalSeconds",
+
+	Callback = function(value)
+		autoFuseIntervalSeconds = value
+	end,
+})
+
+chickensTab:CreateDropdown({
+	Name = "Fuse Rarities",
+	Options = RARITY_TIERS,
+	CurrentOption = {},
+	MultipleOptions = true,
+	Flag = "AutoFuseRarities",
+
+	Callback = function(options)
+		local selected = {}
+
+		if type(options) == "table" then
+			for _, rarityName in ipairs(options) do
+				selected[rarityName] = true
+			end
+		elseif type(options) == "string" then
+			selected[options] = true
+		end
+
+		autoFuseRarities = selected
+	end,
+})
+
+chickensTab:CreateToggle({
+	Name = "Auto Fuse",
+	CurrentValue = autoFuseEnabled,
+	Flag = "AutoFuseEnabled",
+
+	Callback = function(enabled)
+		autoFuseEnabled = enabled
+
+		if enabled then
+			startAutoFuseWorker()
+		else
+			invalidateAutoFuseWorker()
+
+			fuseStatus:Set({
+				Title = "Fuse Status",
+				Content = "Stopped",
+			})
+		end
+	end,
+})
+
+--========================================================
+-- Auto Favorite
+-- Marque en favori tout poulet des raretés cochées qui ne l'est pas déjà,
+-- via SetChickenFavorite:InvokeServer(id, true). Utile pour "verrouiller"
+-- les hautes raretés avant de lancer Auto Sell / Auto Fuse sur les basses.
+--========================================================
+
+local favoriteStatus = chickensTab:CreateParagraph({
+	Title = "Favorite Status",
+	Content = "Idle",
+})
+
+local function startAutoFavoriteWorker()
+	invalidateAutoFavoriteWorker()
+	local token = autoFavoriteWorkerToken
+
+	if not autoFavoriteEnabled then
+		return
+	end
+
+	task.spawn(function()
+		while autoFavoriteEnabled
+			and token == autoFavoriteWorkerToken
+			and scriptAlive() do
+
+			local support = getChickenSupport()
+
+			if not support or not SetChickenFavorite then
+				setParagraph(favoriteStatus, "Favorite Status",
+					support and "SetChickenFavorite remote missing"
+						or "Chicken scripts not found yet...")
+				task.wait(2)
+			else
+				local chickens = getRosterChickens(support)
+				local marked = 0
+
+				if chickens then
+					for _, chicken in ipairs(chickens) do
+						if not autoFavoriteEnabled
+							or token ~= autoFavoriteWorkerToken
+							or not scriptAlive() then
+							break
+						end
+
+						if chicken
+							and chicken.id
+							and chicken.favorite ~= true then
+
+							local rarity = getChickenRarity(chicken, support)
+
+							local wantFav =
+								(rarity and autoFavoriteRarities[rarity])
+								or (autoFavoriteInverted
+									and chicken.mutation ~= nil)
+
+							if wantFav then
+								invokeChickenRemoteWithTimeout(
+									SetChickenFavorite,
+									CHICKEN_REMOTE_TIMEOUT,
+									chicken.id,
+									true
+								)
+								marked = marked + 1
+								task.wait(0.15)
+							end
+						end
+					end
+				end
+
+				setParagraph(favoriteStatus, "Favorite Status",
+					marked > 0
+						and ("Favorited " .. tostring(marked) .. " chicken(s)")
+						or "Nothing to favorite")
+
+				task.wait(autoFavoriteIntervalSeconds)
+			end
+		end
+	end)
+end
+
+chickensTab:CreateSlider({
+	Name = "Favorite Interval (s)",
+	Range = {2, 30},
+	Increment = 1,
+	CurrentValue = autoFavoriteIntervalSeconds,
+	Flag = "AutoFavoriteIntervalSeconds",
+
+	Callback = function(value)
+		autoFavoriteIntervalSeconds = value
+	end,
+})
+
+chickensTab:CreateDropdown({
+	Name = "Favorite Rarities",
+	Options = RARITY_TIERS,
+	CurrentOption = {},
+	MultipleOptions = true,
+	Flag = "AutoFavoriteRarities",
+
+	Callback = function(options)
+		local selected = {}
+
+		if type(options) == "table" then
+			for _, rarityName in ipairs(options) do
+				selected[rarityName] = true
+			end
+		elseif type(options) == "string" then
+			selected[options] = true
+		end
+
+		autoFavoriteRarities = selected
+	end,
+})
+
+chickensTab:CreateToggle({
+	Name = "Auto Favorite Inverted",
+	CurrentValue = autoFavoriteInverted,
+	Flag = "AutoFavoriteInverted",
+
+	Callback = function(enabled)
+		autoFavoriteInverted = enabled
+	end,
+})
+
+chickensTab:CreateToggle({
+	Name = "Auto Favorite",
+	CurrentValue = autoFavoriteEnabled,
+	Flag = "AutoFavoriteEnabled",
+
+	Callback = function(enabled)
+		autoFavoriteEnabled = enabled
+
+		if enabled then
+			startAutoFavoriteWorker()
+		else
+			invalidateAutoFavoriteWorker()
+			setParagraph(favoriteStatus, "Favorite Status", "Stopped")
+		end
+	end,
+})
+
+--========================================================
+-- Auto Promote
+-- PromoteChicken(targetId, {consumeIds}). Cible = poulet actif ou plus
+-- haute rareté. Candidats sacrifiables = même typeId, pas la cible, pas
+-- l'actif, pas favori, pas protégé (isProtectedChicken -> couvre inverted).
+-- On consomme exactement `need - dupes` par cycle (une étoile), comme l'UI.
+--========================================================
+
+local promoteStatus = chickensTab:CreateParagraph({
+	Title = "Promote Status",
+	Content = "Idle",
+})
+
+local function getPromotionView()
+	return GameModules.get(
+		"PromotionView", "ReplicatedStorage.Features.Chicken.PromotionView"
+	)
+end
+
+local function pickPromoteTarget(chickens, support, activeId)
+	if autoPromoteTarget == "Active Chicken" then
+		if not activeId then return nil end
+		for _, c in ipairs(chickens) do
+			if c.id == activeId then return c end
+		end
+		return nil
+	end
+
+	-- "Highest Rarity" : rareté la plus haute (RARITY_TIERS = ordre
+	-- croissant), départage par nombre de doublons dispo.
+	local rank = {}
+	for i, r in ipairs(RARITY_TIERS) do rank[r] = i end
+
+	local best, bestRank = nil, -1
+	for _, c in ipairs(chickens) do
+		if c.id then
+			local r = getChickenRarity(c, support)
+			local ri = (r and rank[r]) or 0
+			if ri > bestRank then
+				best, bestRank = c, ri
+			end
+		end
+	end
+	return best
+end
+
+local function startAutoPromoteWorker()
+	invalidateAutoPromoteWorker()
+	local token = autoPromoteWorkerToken
+
+	if not autoPromoteEnabled then
+		return
+	end
+
+	task.spawn(function()
+		while autoPromoteEnabled
+			and token == autoPromoteWorkerToken
+			and scriptAlive() do
+
+			local support = getChickenSupport()
+			local pv = getPromotionView()
+
+			if not support or not PromoteChicken or type(pv) ~= "table" then
+				setParagraph(promoteStatus, "Promote Status",
+					(not PromoteChicken) and "PromoteChicken remote missing"
+						or (type(pv) ~= "table") and "PromotionView not loaded"
+						or "Chicken scripts not found yet...")
+				task.wait(2)
+			else
+				local chickens = getRosterChickens(support)
+				local activeId = getActiveChickenId(support)
+				local target = chickens
+					and pickPromoteTarget(chickens, support, activeId)
+
+				if not target then
+					setParagraph(promoteStatus, "Promote Status",
+						"No promote target")
+					task.wait(autoPromoteIntervalSeconds)
+				else
+					local rarity = getChickenRarity(target, support)
+					local stars = 0
+					local dupes = 0
+					pcall(function() stars = pv.stars(target) or 0 end)
+					pcall(function() dupes = pv.dupes(target) or 0 end)
+
+					local cap = math.clamp(
+						math.floor(tonumber(autoPromoteMaxStars) or 10), 1, 10)
+
+					if stars >= cap or stars >= 10 then
+						setParagraph(promoteStatus, "Promote Status",
+							"Target at " .. tostring(stars) .. "* — done")
+						task.wait(autoPromoteIntervalSeconds)
+					else
+						local need = nil
+						pcall(function()
+							need = pv.requirement(rarity, stars + 1)
+						end)
+
+						if not need or need <= 0 then
+							setParagraph(promoteStatus, "Promote Status",
+								"Can't read star requirement")
+							task.wait(autoPromoteIntervalSeconds)
+						else
+							local want = math.max(0, need - dupes)
+
+							local pool = {}
+							for _, c in ipairs(chickens) do
+								if c.id
+									and c.id ~= target.id
+									and c.typeId == target.typeId
+									and c.id ~= activeId
+									and c.favorite ~= true
+									and not isProtectedChicken(c, activeId) then
+									pool[#pool + 1] = c.id
+								end
+							end
+
+							if #pool < want then
+								setParagraph(promoteStatus, "Promote Status",
+									"Need " .. tostring(want - #pool)
+										.. " more dupe(s) of "
+										.. tostring(target.typeId)
+										.. " for " .. tostring(stars + 1) .. "*")
+								task.wait(autoPromoteIntervalSeconds)
+							else
+								local consume = {}
+								for i = 1, want do consume[i] = pool[i] end
+
+								local ok, res = invokeChickenRemoteWithTimeout(
+									PromoteChicken,
+									CHICKEN_REMOTE_TIMEOUT,
+									target.id,
+									consume
+								)
+
+								if ok and type(res) == "table" and res.ok then
+									setParagraph(promoteStatus, "Promote Status",
+										"Promoted "
+											.. tostring(target.nickname or target.typeId)
+											.. " to " .. tostring(stars + 1)
+											.. "* (-" .. tostring(want) .. " dupe)")
+								else
+									setParagraph(promoteStatus, "Promote Status",
+										"Promote failed: "
+											.. describeRemoteFailure(ok, res))
+								end
+
+								task.wait(autoPromoteIntervalSeconds)
+							end
+						end
+					end
+				end
+			end
+		end
+	end)
+end
+
+chickensTab:CreateDropdown({
+	Name = "Promote Target",
+	Options = PROMOTE_TARGET_CHOICES,
+	CurrentOption = autoPromoteTarget,
+	Flag = "AutoPromoteTarget",
+
+	Callback = function(option)
+		local value = type(option) == "table" and option[1] or option
+		if value then autoPromoteTarget = value end
+	end,
+})
+
+chickensTab:CreateSlider({
+	Name = "Promote Up To Stars",
+	Range = {1, 10},
+	Increment = 1,
+	CurrentValue = autoPromoteMaxStars,
+	Flag = "AutoPromoteMaxStars",
+
+	Callback = function(value)
+		autoPromoteMaxStars = math.floor(tonumber(value) or 10)
+	end,
+})
+
+chickensTab:CreateSlider({
+	Name = "Promote Interval (s)",
+	Range = {2, 30},
+	Increment = 1,
+	CurrentValue = autoPromoteIntervalSeconds,
+	Flag = "AutoPromoteIntervalSeconds",
+
+	Callback = function(value)
+		autoPromoteIntervalSeconds = value
+	end,
+})
+
+chickensTab:CreateToggle({
+	Name = "Auto Promote",
+	CurrentValue = autoPromoteEnabled,
+	Flag = "AutoPromoteEnabled",
+
+	Callback = function(enabled)
+		autoPromoteEnabled = enabled
+
+		if enabled then
+			startAutoPromoteWorker()
+		else
+			invalidateAutoPromoteWorker()
+			setParagraph(promoteStatus, "Promote Status", "Stopped")
+		end
+	end,
+})
+
+return {
+	StartFromConfig = function()
+		if autoSellEnabled then
+			startAutoSellWorker()
+		end
+
+		if autoFuseEnabled then
+			startAutoFuseWorker()
+		end
+
+		if autoFavoriteEnabled then
+			startAutoFavoriteWorker()
+		end
+
+		if autoPromoteEnabled then
+			startAutoPromoteWorker()
+		end
+	end,
+
+	Stop = function()
+		autoSellEnabled = false
+		autoFuseEnabled = false
+		autoFavoriteEnabled = false
+		autoPromoteEnabled = false
+
+		invalidateAutoSellWorker()
+		invalidateAutoFuseWorker()
+		invalidateAutoFavoriteWorker()
+		invalidateAutoPromoteWorker()
+	end,
+}
+end)()
+
+--========================================================
+-- AUTO ARENA
+-- Modules du jeu : PlayerScripts.UI.2d.Arena.ArenaClient / ArenaState
+-- et PlayerScripts.UI.2d.Settings.ArenaRankSettings (required en
+-- lecture seule, jamais monkey-patchés — mêmes fonctions que celles
+-- utilisées par les boutons Battle / Claim / Equip Best du jeu).
+--========================================================
+
+local AutoArenaController = (function()
+
+local autoArenaFightEnabled = false
+local autoArenaEquipBestEnabled = false
+local autoArenaClaimEnabled = false
+
+-- Marge de sécurité entre la fin confirmée d'un combat et le prochain
+-- ArenaFight. Trop court (ou absent) et les combats peuvent s'enchaîner
+-- avant que le jeu ait fini de sortir le joueur de la zone Arena ->
+-- il finit coincé dedans, sans retour possible vers la zone normale.
+local autoArenaPostBattleDelay = 3
+
+local autoArenaFightWorkerToken = 0
+local autoArenaEquipBestWorkerToken = 0
+local autoArenaClaimWorkerToken = 0
+
+local AUTO_ARENA_POLL_DELAY = 0.5
+local AUTO_ARENA_REMOTE_TIMEOUT = 8
+local AUTO_ARENA_BATTLE_START_TIMEOUT = 6
+local AUTO_ARENA_BATTLE_TIMEOUT = 30
+local AUTO_ARENA_EQUIP_DELAY = 5
+local AUTO_ARENA_CLAIM_DELAY = 3
+local ARENA_VIEW_REFRESH_COOLDOWN = 2
+
+local function invalidateAutoArenaFightWorker()
+	autoArenaFightWorkerToken = autoArenaFightWorkerToken + 1
+end
+
+local function invalidateAutoArenaEquipBestWorker()
+	autoArenaEquipBestWorkerToken = autoArenaEquipBestWorkerToken + 1
+end
+
+local function invalidateAutoArenaClaimWorker()
+	autoArenaClaimWorkerToken = autoArenaClaimWorkerToken + 1
+end
+
+local function safeRequireArena(moduleScript)
+	if not moduleScript or not moduleScript:IsA("ModuleScript") then
+		return nil
+	end
+
+	local ok, result = pcall(require, moduleScript)
+	if not ok then
+		return nil
+	end
+
+	return result
+end
+
+-- Caché uniquement en cas de succès : tant que le dossier Arena du
+-- jeu n'est pas encore chargé (ex. exécuté trop tôt), on retente à
+-- chaque appel plutôt que de figer un échec définitif.
+local arenaSupportCache = nil
+
+local function getArenaSupport()
+	if arenaSupportCache ~= nil then
+		return arenaSupportCache
+	end
+
+	local playerScripts = player:FindFirstChild("PlayerScripts")
+	local ui = playerScripts and playerScripts:FindFirstChild("UI")
+	local twoD = ui and ui:FindFirstChild("2d")
+	local arenaFolder = twoD and twoD:FindFirstChild("Arena")
+	local settingsFolder = twoD and twoD:FindFirstChild("Settings")
+	local packagesFolder = ReplicatedStorage:FindFirstChild("Packages")
+
+	local arenaClient = safeRequireArena(
+		arenaFolder and arenaFolder:FindFirstChild("ArenaClient")
+	)
+
+	local arenaState = safeRequireArena(
+		arenaFolder and arenaFolder:FindFirstChild("ArenaState")
+	)
+
+	local arenaRankSettings = safeRequireArena(
+		settingsFolder and settingsFolder:FindFirstChild("ArenaRankSettings")
+	)
+
+	-- Charm : uniquement pour s'abonner à ArenaState.result et fermer
+	-- l'écran de résultat instantanément (voir startAutoArenaResultDismisser).
+	-- Optionnel : son absence ne bloque pas Fight/Equip/Claim.
+	local charm = safeRequireArena(
+		packagesFolder and packagesFolder:FindFirstChild("Charm")
+	)
+
+	if type(arenaClient) ~= "table" or type(arenaState) ~= "table" then
+		return nil
+	end
+
+	arenaSupportCache = {
+		Client = arenaClient,
+		State = arenaState,
+		RankSettings = type(arenaRankSettings) == "table" and arenaRankSettings or nil,
+		Charm = type(charm) == "table" and charm or nil,
+	}
+
+	return arenaSupportCache
+end
+
+-- ArenaClient.* (fight/claim/setTeam/refresh) finit en InvokeServer.
+-- Si le serveur ne répond jamais, InvokeServer bloque la coroutine
+-- appelante INDÉFINIMENT — pas d'erreur, juste un silence permanent.
+-- pcall seul ne protège pas contre ça : il attend avec l'appel. Même
+-- parade que invokeWithTimeout dans AutoTowerController plus haut dans
+-- ce fichier : on isole l'appel dans sa propre coroutine et on poll un
+-- flag avec un budget de temps -> jamais bloqué plus de timeoutSeconds.
+local function invokeArenaWithTimeout(fn, timeoutSeconds, ...)
+	if type(fn) ~= "function" then
+		return false, "not_callable"
+	end
+
+	local args = {...}
+	local done = false
+	local ok, result
+
+	task.spawn(function()
+		ok, result = pcall(fn, unpack(args))
+		done = true
+	end)
+
+	local waited = 0
+
+	while not done and waited < timeoutSeconds do
+		task.wait(0.1)
+		waited = waited + 0.1
+	end
+
+	if not done then
+		return false, "timeout after " .. tostring(timeoutSeconds) .. "s"
+	end
+
+	return ok, result
+end
+
+-- Attend qu'un atome Charm (ex. ArenaState.battling) satisfasse predicate,
+-- via Charm.subscribe plutôt qu'un polling à intervalle fixe -> réaction
+-- quasi instantanée (confirmé en live : le callback se déclenche de façon
+-- synchrone dès que l'atome change) au lieu d'un délai d'attente initial +
+-- un poll toutes les 0.1-0.25s. C'est ce qui faisait que le script mettait
+-- du temps à "se rendre compte" qu'un combat avait démarré. shouldContinue
+-- (optionnel) permet de sortir tôt si le worker a été désactivé entre
+-- temps, sans garder l'abonnement actif inutilement.
+local function waitForArenaCondition(charm, atom, predicate, timeoutSeconds, shouldContinue)
+	if predicate(atom()) then
+		return true
+	end
+
+	local satisfied = false
+	local unsubscribe = nil
+
+	if charm and type(charm.subscribe) == "function" then
+		local ok, unsub = pcall(charm.subscribe, atom, function(value)
+			if predicate(value) then
+				satisfied = true
+			end
+		end)
+
+		if ok and type(unsub) == "function" then
+			unsubscribe = unsub
+		end
+	end
+
+	local waited = 0
+
+	while not satisfied
+		and waited < timeoutSeconds
+		and (not shouldContinue or shouldContinue()) do
+
+		task.wait(0.05)
+		waited = waited + 0.05
+
+		-- Pas de Charm dispo (module introuvable) : on retombe sur un
+		-- polling serré de l'atome lui-même.
+		if not unsubscribe and predicate(atom()) then
+			satisfied = true
+		end
+	end
+
+	if unsubscribe then
+		pcall(unsubscribe)
+	end
+
+	return satisfied or predicate(atom())
+end
+
+local lastArenaRefreshAt = 0
+
+-- ArenaState.view() reste nil tant qu'aucun refresh n'a eu lieu.
+-- ArenaController (toujours actif côté jeu) rafraîchit déjà après
+-- chaque combat, donc ceci ne sert que d'amorce + filet de sécurité,
+-- throttled pour ne jamais spam le remote ArenaGetView.
+local function ensureArenaView(client, state)
+	local view = state.view()
+
+	if view ~= nil then
+		return view
+	end
+
+	local now = os.clock()
+
+	if now - lastArenaRefreshAt < ARENA_VIEW_REFRESH_COOLDOWN then
+		return nil
+	end
+
+	lastArenaRefreshAt = now
+	invokeArenaWithTimeout(client.refresh, AUTO_ARENA_REMOTE_TIMEOUT)
+
+	return state.view()
+end
+
+local arenaResultUnsubscribe = nil
+
+-- Ferme l'écran de résultat de combat dès qu'il apparaît (abonnement
+-- Charm = instantané), au lieu d'attendre le prochain tick du worker
+-- de fight — qui peut être en train d'attendre jusqu'à
+-- AUTO_ARENA_BATTLE_TIMEOUT avant de repasser en haut de sa boucle.
+local function startAutoArenaResultDismisser()
+	if arenaResultUnsubscribe then
+		return
+	end
+
+	local support = getArenaSupport()
+
+	if not support
+		or not support.Charm
+		or type(support.Charm.subscribe) ~= "function" then
+
+		return
+	end
+
+	local ok, unsubscribe = pcall(
+		support.Charm.subscribe,
+		support.State.result,
+		function(value)
+			if value ~= nil and autoArenaFightEnabled then
+				support.State.result(nil)
+			end
+		end
+	)
+
+	if ok and type(unsubscribe) == "function" then
+		arenaResultUnsubscribe = unsubscribe
+	end
+end
+
+local function stopAutoArenaResultDismisser()
+	if arenaResultUnsubscribe then
+		pcall(arenaResultUnsubscribe)
+		arenaResultUnsubscribe = nil
+	end
+end
+
+local arenaStatus = arenaTab:CreateParagraph({
+	Title = "Arena Status",
+	Content = "Idle",
+})
+
+local function computeBestArenaIds(inventory, teamSize)
+	local ids = {}
+
+	for _, chicken in ipairs(inventory) do
+		if #ids >= teamSize then
+			break
+		end
+
+		if chicken and chicken.id ~= nil then
+			table.insert(ids, chicken.id)
+		end
+	end
+
+	return ids
+end
+
+local function idListsEqual(a, b)
+	if #a ~= #b then
+		return false
+	end
+
+	for i = 1, #a do
+		if a[i] ~= b[i] then
+			return false
+		end
+	end
+
+	return true
+end
+
+--========================================================
+-- Auto Fight
+--========================================================
+
+local function startAutoArenaFightWorker()
+	invalidateAutoArenaFightWorker()
+	local token = autoArenaFightWorkerToken
+
+	if not autoArenaFightEnabled then
+		return
+	end
+
+	task.spawn(function()
+		while autoArenaFightEnabled
+			and token == autoArenaFightWorkerToken
+			and scriptAlive() do
+
+			local support = getArenaSupport()
+
+			if not support then
+				arenaStatus:Set({
+					Title = "Arena Status",
+					Content = "Arena scripts not found yet...",
+				})
+
+				task.wait(2)
+			else
+				local client = support.Client
+				local state = support.State
+
+				ensureArenaView(client, state)
+
+				-- Nettoie un résultat resté affiché pour ne pas
+				-- bloquer le prochain cycle de combat.
+				if state.result() ~= nil then
+					state.result(nil)
+				end
+
+				if state.battling() then
+					arenaStatus:Set({
+						Title = "Arena Status",
+						Content = "Battling...",
+					})
+
+					task.wait(AUTO_ARENA_POLL_DELAY)
+				else
+					-- Timeout dédié à la requête de combat elle-même
+					-- (matchmaking / ArenaFight), séparé du timeout de
+					-- la boucle d'attente plus bas qui couvre le combat
+					-- en cours une fois qu'il a réellement démarré. Sans
+					-- ça, un serveur muet bloquait cette coroutine pour
+					-- toujours sur "Fight sent · waiting for battle".
+					local ok, fightResult =
+						invokeArenaWithTimeout(client.fight, AUTO_ARENA_REMOTE_TIMEOUT)
+
+					if ok
+						and type(fightResult) == "table"
+						and fightResult.ok then
+
+						arenaStatus:Set({
+							Title = "Arena Status",
+							Content = "Fight sent · waiting for battle to start",
+						})
+
+						local function stillRunning()
+							return autoArenaFightEnabled
+								and token == autoArenaFightWorkerToken
+								and scriptAlive()
+						end
+
+						-- Réagit dès qu'ArenaState.battling passe à true
+						-- (abonnement Charm, pas de polling) au lieu
+						-- d'attendre un délai fixe avant de vérifier.
+						local started = waitForArenaCondition(
+							support.Charm,
+							state.battling,
+							function(value)
+								return value == true
+							end,
+							AUTO_ARENA_BATTLE_START_TIMEOUT,
+							stillRunning
+						)
+
+						if started then
+							arenaStatus:Set({
+								Title = "Arena Status",
+								Content = "Battling...",
+							})
+
+							local finished = waitForArenaCondition(
+								support.Charm,
+								state.battling,
+								function(value)
+									return value == false
+								end,
+								AUTO_ARENA_BATTLE_TIMEOUT,
+								stillRunning
+							)
+
+							if finished then
+								arenaStatus:Set({
+									Title = "Arena Status",
+									Content = "Battle finished · cooling down",
+								})
+
+								-- Laisse vraiment le temps au jeu de
+								-- terminer la transition (sortie de la
+								-- zone Arena) avant de relancer un
+								-- combat. Sans cette marge, les combats
+								-- peuvent s'enchaîner trop vite et
+								-- finir par bloquer le joueur dans la
+								-- zone Arena, sans retour possible.
+								task.wait(autoArenaPostBattleDelay)
+							else
+								-- Timeout : on ne sait pas si le combat
+								-- est vraiment terminé, donc on ne
+								-- relance surtout pas un ArenaFight par
+								-- dessus. Le prochain tour de boucle
+								-- constatera l'état réel via
+								-- state.battling().
+								arenaStatus:Set({
+									Title = "Arena Status",
+									Content = "Still battling after timeout · waiting",
+								})
+
+								task.wait(AUTO_ARENA_POLL_DELAY)
+							end
+						else
+							arenaStatus:Set({
+								Title = "Arena Status",
+								Content = "Fight sent but battle never started · cooling down",
+							})
+
+							-- Même cooldown que pour une fin de combat
+							-- normale, pas un délai fixe court : un
+							-- fight() qui "réussit" côté client sans
+							-- jamais faire passer battling à true sent
+							-- surtout un serveur pas encore prêt (match
+							-- précédent pas fini de nettoyer) — retenter
+							-- vite ne fait qu'aggraver ça.
+							task.wait(autoArenaPostBattleDelay)
+						end
+					else
+						local errorText = "unknown"
+
+						if type(fightResult) == "table"
+							and fightResult.error ~= nil then
+
+							errorText = tostring(fightResult.error)
+						elseif not ok then
+							errorText = tostring(fightResult)
+						end
+
+						arenaStatus:Set({
+							Title = "Arena Status",
+							Content = "Fight failed: " .. errorText .. " · cooling down",
+						})
+
+						-- Rafraîchit tout de suite : la cause (pas
+						-- d'équipe, pas d'adversaire, cooldown,
+						-- timeout serveur...) peut se résoudre
+						-- d'elle-même juste après.
+						invokeArenaWithTimeout(client.refresh, AUTO_ARENA_REMOTE_TIMEOUT)
+
+						-- Même cooldown qu'après un combat terminé,
+						-- PAS un délai fixe court : un fight() qui
+						-- time out (cause la plus fréquente ici) veut
+						-- très probablement dire que le serveur n'a
+						-- pas fini de nous sortir de la zone Arena du
+						-- combat précédent. Retenter en 0.5s fixe (au
+						-- lieu de respecter le slider) — quel que soit
+						-- le réglage — c'est exactement ce qui pouvait
+						-- coincer le joueur dans la zone Arena.
+						task.wait(autoArenaPostBattleDelay)
+					end
+				end
+			end
+		end
+	end)
+end
+
+--========================================================
+-- Auto Equip Best Team
+--========================================================
+
+local function startAutoArenaEquipBestWorker()
+	invalidateAutoArenaEquipBestWorker()
+	local token = autoArenaEquipBestWorkerToken
+
+	if not autoArenaEquipBestEnabled then
+		return
+	end
+
+	task.spawn(function()
+		while autoArenaEquipBestEnabled
+			and token == autoArenaEquipBestWorkerToken
+			and scriptAlive() do
+
+			local support = getArenaSupport()
+
+			if support then
+				local client = support.Client
+				local state = support.State
+				local view = ensureArenaView(client, state)
+
+				if type(view) == "table" then
+					local inventory = view.inventory or {}
+					local teamSize = tonumber(view.teamSize) or 3
+					local currentTeamIds = view.teamIds or {}
+
+					local bestIds =
+						computeBestArenaIds(inventory, teamSize)
+
+					if #bestIds > 0
+						and not idListsEqual(bestIds, currentTeamIds) then
+
+						invokeArenaWithTimeout(
+							client.setTeam,
+							AUTO_ARENA_REMOTE_TIMEOUT,
+							bestIds
+						)
+					end
+				end
+			end
+
+			task.wait(AUTO_ARENA_EQUIP_DELAY)
+		end
+	end)
+end
+
+--========================================================
+-- Auto Claim Rewards
+--========================================================
+
+local function startAutoArenaClaimWorker()
+	invalidateAutoArenaClaimWorker()
+	local token = autoArenaClaimWorkerToken
+
+	if not autoArenaClaimEnabled then
+		return
+	end
+
+	task.spawn(function()
+		while autoArenaClaimEnabled
+			and token == autoArenaClaimWorkerToken
+			and scriptAlive() do
+
+			local support = getArenaSupport()
+
+			if support then
+				local client = support.Client
+				local state = support.State
+				local view = ensureArenaView(client, state)
+
+				if type(view) == "table"
+					and type(view.claimable) == "table" then
+
+					local claimed = view.claimed
+
+					for _, item in ipairs(view.claimable) do
+						if not autoArenaClaimEnabled
+							or token ~= autoArenaClaimWorkerToken
+							or not scriptAlive() then
+
+							break
+						end
+
+						local rankId = item and item.rankId
+
+						local alreadyClaimed =
+							type(claimed) == "table"
+							and rankId ~= nil
+							and claimed[rankId] == true
+
+						if rankId ~= nil and not alreadyClaimed then
+							invokeArenaWithTimeout(
+								client.claim,
+								AUTO_ARENA_REMOTE_TIMEOUT,
+								rankId
+							)
+							task.wait(0.15)
+						end
+					end
+				end
+			end
+
+			task.wait(AUTO_ARENA_CLAIM_DELAY)
+		end
+	end)
+end
+
+--========================================================
+-- UI
+--========================================================
+
+arenaTab:CreateSection("Auto Arena")
+
+arenaTab:CreateSlider({
+	Name = "Post-Battle Cooldown (s)",
+	Range = {3, 10},
+	Increment = 1,
+	CurrentValue = autoArenaPostBattleDelay,
+	Flag = "AutoArenaPostBattleDelay",
+
+	Callback = function(value)
+		autoArenaPostBattleDelay = value
+	end,
+})
+
+arenaTab:CreateToggle({
+	Name = "Auto Fight",
+	CurrentValue = autoArenaFightEnabled,
+	Flag = "AutoArenaFightEnabled",
+
+	Callback = function(enabled)
+		autoArenaFightEnabled = enabled
+
+		if enabled then
+			startAutoArenaFightWorker()
+			startAutoArenaResultDismisser()
+		else
+			invalidateAutoArenaFightWorker()
+			stopAutoArenaResultDismisser()
+
+			arenaStatus:Set({
+				Title = "Arena Status",
+				Content = "Stopped",
+			})
+		end
+	end,
+})
+
+arenaTab:CreateToggle({
+	Name = "Auto Equip Best Team",
+	CurrentValue = autoArenaEquipBestEnabled,
+	Flag = "AutoArenaEquipBestEnabled",
+
+	Callback = function(enabled)
+		autoArenaEquipBestEnabled = enabled
+
+		if enabled then
+			startAutoArenaEquipBestWorker()
+		else
+			invalidateAutoArenaEquipBestWorker()
+		end
+	end,
+})
+
+arenaTab:CreateToggle({
+	Name = "Auto Claim Rewards",
+	CurrentValue = autoArenaClaimEnabled,
+	Flag = "AutoArenaClaimEnabled",
+
+	Callback = function(enabled)
+		autoArenaClaimEnabled = enabled
+
+		if enabled then
+			startAutoArenaClaimWorker()
+		else
+			invalidateAutoArenaClaimWorker()
+		end
+	end,
+})
+
+-- Lecture ponctuelle de l'état natif au chargement, uniquement pour
+-- que le toggle affiche la bonne valeur initiale (ArenaAutoAbility
+-- est un attribut serveur persistant, indépendant de ce script).
+local initialArenaSupport = getArenaSupport()
+local initialAutoAbility = false
+
+if initialArenaSupport
+	and initialArenaSupport.RankSettings
+	and type(initialArenaSupport.RankSettings.autoAbility) == "function" then
+
+	local ok, value = pcall(initialArenaSupport.RankSettings.autoAbility)
+
+	if ok then
+		initialAutoAbility = value == true
+	end
+end
+
+arenaTab:CreateToggle({
+	Name = "Auto Use Abilities (Native)",
+	CurrentValue = initialAutoAbility,
+	Flag = "AutoArenaAbilityEnabled",
+
+	Callback = function(enabled)
+		local support = getArenaSupport()
+
+		if support
+			and support.RankSettings
+			and type(support.RankSettings.setAutoAbility) == "function" then
+
+			pcall(support.RankSettings.setAutoAbility, enabled)
+		end
+	end,
+})
+
+return {
+	StartFromConfig = function()
+		if autoArenaFightEnabled then
+			startAutoArenaFightWorker()
+			startAutoArenaResultDismisser()
+		end
+
+		if autoArenaEquipBestEnabled then
+			startAutoArenaEquipBestWorker()
+		end
+
+		if autoArenaClaimEnabled then
+			startAutoArenaClaimWorker()
+		end
+	end,
+
+	Stop = function()
+		autoArenaFightEnabled = false
+		autoArenaEquipBestEnabled = false
+		autoArenaClaimEnabled = false
+
+		invalidateAutoArenaFightWorker()
+		invalidateAutoArenaEquipBestWorker()
+		invalidateAutoArenaClaimWorker()
+		stopAutoArenaResultDismisser()
+	end,
+}
+end)()
+
+--========================================================
+-- ROUTINE AUTOMATION (AutoFarm)
+-- Utilise les états et réglages existants de l'onglet Auto.
+--========================================================
+
+Window.AutomationController = (function()
+	local automationEnabled = false
+	local towerLoopDelay = 5
+	local fightTimeout = 10
+	local automationWorkerToken = 0
+	local requiredRebirthFloorCache = nil
+	local waitingForRebirth = false
+	local nextTowerStartAt = 0
+	local towerWasActive = false
+	local towerLoopCountdownActive = false
+	local towerStartPending = false
+	local towerStartPendingUntil = 0
+	local postRebirthHoldUntil = 0
+	local lastRebirthAttemptAt = 0
+	local lastCoopOrderAt = 0
+	local coopStableSince = nil
+	local rebirthAttemptedAfterReturn = false
+	local lastDynamicSurrenderAt = 0
+
+	-- Fight Timeout partage le même runtime que la retraite dynamique B>A.
+	local fightTimeoutFloor = nil
+	local fightTimeoutStartedAt = 0
+	local lastFightTimeoutSurrenderAt = 0
+
+	local AUTOMATION_POLL_DELAY = 0.10
+	local AUTOMATION_REBIRTH_RETRY_DELAY = 0.10
+	local AUTOMATION_POST_REBIRTH_HOLD = 1.0
+	local AUTOMATION_COOP_ORDER_DELAY = 0.25
+	local AUTOMATION_DYNAMIC_SURRENDER_DELAY = 0.25
+	local AUTOMATION_FIGHT_TIMEOUT_RETRY_DELAY = 0.10
+
+	-- Debug temporaire : print à chaque tick (0.10s) l'état interne du
+	-- scheduler pour diagnostiquer le freeze du countdown "Tower starts
+	-- in X.Xs". Repasser à false une fois le bug identifié/fixé.
+	local AUTOMATION_DEBUG_LOG = false
+
+	local function getAutomationTowerLoopDelay()
+		return math.clamp(
+			tonumber(towerLoopDelay) or 5,
+			1,
+			200
+		)
+	end
+
+	local function normalizeKey(value)
+		return string.lower(tostring(value or ""):gsub("[^%w]", ""))
+	end
+
+	local function safeRequireAutomation(moduleScript)
+		if not moduleScript or not moduleScript:IsA("ModuleScript") then return nil end
+		local ok, result = pcall(require, moduleScript)
+		if not ok then return nil end
+		return result
+	end
+
+	local dataClientCache = false
+	local function getDataClient()
+		if dataClientCache ~= false then return dataClientCache end
+		local packages = ReplicatedStorage:FindFirstChild("Packages")
+		local dataServiceModule = packages and packages:FindFirstChild("DataService")
+		local dataService = safeRequireAutomation(dataServiceModule)
+		local client = type(dataService) == "table" and dataService.client or nil
+		dataClientCache = client
+		return client
+	end
+
+	local function getClientPath(path)
+		local client = getDataClient()
+		if type(client) ~= "table" or type(client.get) ~= "function" then return nil end
+		local ok, result = pcall(function() return client:get(path) end)
+		if not ok then return nil end
+		return result
+	end
+
+	local function validFloor(value)
+		local floor = tonumber(value)
+		if not floor then return nil end
+		floor = math.floor(floor + 0.5)
+		if floor < 1 or floor > 9999 then return nil end
+		return floor
+	end
+
+	-- Flux Rebirth exact récupéré de RebirthController :
+	--   count = DataController.rebirth().count
+	--   towerBest = DataController.towerBest()
+	--   isVariant = RebirthExperiment.armOf(player) == RebirthExperiment.VARIANT
+	--   requirementFloor = RebirthBonus.requirementFloorFor(count, isVariant)
+	-- (l'ancien requirementFloor(count) sans variant donnait un floor
+	-- faux pour les joueurs assignés à l'arm expérimental -> c'était la
+	-- cause du décalage entre joueurs.)
+	local RebirthAuthority = (function()
+		local dataControllerCache = false
+		local rebirthBonusCache = false
+
+		local function getDataController()
+			if dataControllerCache ~= false then
+				return dataControllerCache
+			end
+
+			local playerScripts =
+				player:FindFirstChild("PlayerScripts")
+
+			local core =
+				playerScripts
+				and playerScripts:FindFirstChild("Core")
+
+			local data =
+				core and core:FindFirstChild("Data")
+
+			local moduleScript =
+				data and data:FindFirstChild("DataController")
+
+			local controller =
+				safeRequireAutomation(moduleScript)
+
+			if type(controller) == "table" then
+				dataControllerCache = controller
+				return controller
+			end
+
+			return nil
+		end
+
+		local function getRebirthBonus()
+			if rebirthBonusCache ~= false then
+				return rebirthBonusCache
+			end
+
+			local core =
+				ReplicatedStorage:FindFirstChild("Core")
+
+			local progression =
+				core and core:FindFirstChild("Progression")
+
+			local moduleScript =
+				progression
+				and progression:FindFirstChild("RebirthBonus")
+
+			local rebirthBonus =
+				safeRequireAutomation(moduleScript)
+
+			if type(rebirthBonus) == "table" then
+				rebirthBonusCache = rebirthBonus
+				return rebirthBonus
+			end
+
+			return nil
+		end
+
+		-- Le floor requis dépend de l'A/B test RebirthExperiment côté
+		-- joueur (cf. RebirthController : requirementFloorFor(count,
+		-- armOf(player) == VARIANT)). Sans ça, deux joueurs au même
+		-- count peuvent avoir un requirementFloor différent -> c'est la
+		-- cause du décalage entre joueurs.
+		local rebirthExperimentCache = false
+
+		local function getRebirthExperiment()
+			if rebirthExperimentCache ~= false then
+				return rebirthExperimentCache
+			end
+
+			local core =
+				ReplicatedStorage:FindFirstChild("Core")
+
+			local progression =
+				core and core:FindFirstChild("Progression")
+
+			local moduleScript =
+				progression
+				and progression:FindFirstChild("RebirthExperiment")
+
+			local rebirthExperiment =
+				safeRequireAutomation(moduleScript)
+
+			if type(rebirthExperiment) == "table" then
+				rebirthExperimentCache = rebirthExperiment
+				return rebirthExperiment
+			end
+
+			return nil
+		end
+
+		-- true / false / nil (nil = impossible à déterminer, on tentera
+		-- quand même le calcul sans variant en fallback).
+		-- Timeout : armOf() n'est pas un Remote mais rien ne garantit
+		-- qu'elle ne yield jamais en interne (signal/promise non résolu
+		-- côté module du jeu). pcall seul ne protège pas contre un hang,
+		-- donc même parade que pour les InvokeServer : coroutine isolée
+		-- + poll avec budget de temps.
+		local function getIsExperimentVariant()
+			local rebirthExperiment = getRebirthExperiment()
+
+			if type(rebirthExperiment) ~= "table"
+				or type(rebirthExperiment.armOf) ~= "function"
+				or rebirthExperiment.VARIANT == nil then
+
+				return nil
+			end
+
+			local done = false
+			local ok, arm
+
+			task.spawn(function()
+				ok, arm =
+					pcall(rebirthExperiment.armOf, player)
+
+				done = true
+			end)
+
+			local waited = 0
+
+			while not done and waited < 1 do
+				task.wait(0.1)
+				waited = waited + 0.1
+			end
+
+			if not done then
+				print("[AutoFarm DEBUG] RebirthExperiment.armOf TIMEOUT (>1s) — probable cause du freeze")
+				return nil
+			end
+
+			if not ok then
+				return nil
+			end
+
+			return arm == rebirthExperiment.VARIANT
+		end
+
+		return {
+			GetCount = function()
+				local controller = getDataController()
+
+				if type(controller) ~= "table"
+					or type(controller.rebirth) ~= "function" then
+
+					return nil
+				end
+
+				local ok, state =
+					pcall(controller.rebirth)
+
+				if not ok then
+					return nil
+				end
+
+				if type(state) == "number" then
+					return math.max(
+						0,
+						math.floor(state + 0.5)
+					)
+				end
+
+				if type(state) == "table" then
+					local count = tonumber(state.count)
+
+					if count then
+						return math.max(
+							0,
+							math.floor(count + 0.5)
+						)
+					end
+				end
+
+				return nil
+			end,
+
+			GetTowerBest = function()
+				local controller = getDataController()
+
+				if type(controller) ~= "table"
+					or type(controller.towerBest) ~= "function" then
+
+					return nil
+				end
+
+				local ok, value =
+					pcall(controller.towerBest)
+
+				if not ok then
+					return nil
+				end
+
+				return validFloor(value)
+			end,
+
+			GetRequirementFloor = function(count)
+				count = tonumber(count)
+
+				if count == nil then
+					return nil
+				end
+
+				count =
+					math.max(
+						0,
+						math.floor(count + 0.5)
+					)
+
+				local rebirthBonus = getRebirthBonus()
+
+				if type(rebirthBonus) ~= "table" then
+					return nil
+				end
+
+				local ok, value
+
+				-- Vraie formule du jeu (RebirthController) : dépend de
+				-- l'A/B test. Priorité absolue si dispo.
+				if type(rebirthBonus.requirementFloorFor)
+					== "function" then
+
+					local isVariant = getIsExperimentVariant()
+
+					ok, value =
+						pcall(
+							rebirthBonus.requirementFloorFor,
+							count,
+							isVariant == true
+						)
+				end
+
+				-- Fallback : ancienne signature sans variant (au cas où
+				-- une build antérieure/différente n'a pas l'expérience).
+				if not ok
+					and type(rebirthBonus.requirementFloor)
+						== "function" then
+
+					ok, value =
+						pcall(
+							rebirthBonus.requirementFloor,
+							count
+						)
+				end
+
+				if not ok then
+					return nil
+				end
+
+				local floor = tonumber(value)
+
+				if not floor then
+					return nil
+				end
+
+				floor = math.floor(floor + 0.5)
+
+				if floor < 0 or floor > 9999 then
+					return nil
+				end
+
+				return floor
+			end,
+		}
+	end)()
+
+	local function getTowerBestFloor()
+		local authoritative =
+			RebirthAuthority.GetTowerBest()
+
+		if authoritative then
+			return authoritative
+		end
+
+		local towerState = getClientPath({"tower"})
+
+		if type(towerState) ~= "table" then
+			return nil
+		end
+
+		return validFloor(
+			towerState.best
+				or towerState.bestFloor
+				or towerState.highest
+				or towerState.highestFloor
+		)
+	end
+
+	-- Throttle : fallback ultime, un playerGui:GetDescendants() complet.
+	-- Ne s'exécute que si RebirthAuthority.GetCount() et getClientPath()
+	-- échouent tous les deux — mais chez les joueurs concernés, ça
+	-- tournerait sinon à chaque tick (0.1s) sans throttle.
+	local rebirthCountGuiCache = nil
+	local rebirthCountGuiScanAt = 0
+	local REBIRTH_COUNT_GUI_SCAN_INTERVAL = 0.4
+
+	local function rebirthCountFromGui()
+		local now = os.clock()
+
+		if rebirthCountGuiCache ~= nil
+			and now - rebirthCountGuiScanAt < REBIRTH_COUNT_GUI_SCAN_INTERVAL then
+
+			return rebirthCountGuiCache
+		end
+
+		rebirthCountGuiScanAt = now
+
+		for _, object in ipairs(playerGui:GetDescendants()) do
+			if object:IsA("TextLabel")
+				or object:IsA("TextButton")
+				or object:IsA("TextBox") then
+
+				local content = tostring(object.Text or "")
+
+				local countText = content:match(
+					"[Rr][Ee][Bb][Ii][Rr][Tt][Hh]%s*#?%s*(%d+)"
+				)
+
+				if countText then
+					local count = tonumber(countText)
+
+					if count then
+						local result = math.max(
+							0,
+							math.floor(count + 0.5)
+						)
+
+						rebirthCountGuiCache = result
+						return result
+					end
+				end
+			end
+		end
+
+		rebirthCountGuiCache = nil
+		return nil
+	end
+
+	local function getRebirthCount()
+		local authoritative =
+			RebirthAuthority.GetCount()
+
+		if authoritative ~= nil then
+			return authoritative
+		end
+
+		local state = getClientPath({"rebirth"})
+
+		if type(state) == "number" then
+			return math.max(
+				0,
+				math.floor(state + 0.5)
+			)
+		end
+
+		if type(state) == "table" then
+			local count = tonumber(
+				state.count
+					or state.rebirthCount
+					or state.rebirths
+					or state.level
+					or state.index
+			)
+
+			if count then
+				return math.max(
+					0,
+					math.floor(count + 0.5)
+				)
+			end
+		end
+
+		return rebirthCountFromGui()
+	end
+
+	local function requirementFromRebirthBonus()
+		local count = getRebirthCount()
+
+		if count == nil then
+			return nil
+		end
+
+		return RebirthAuthority.GetRequirementFloor(count)
+	end
+
+	local REQUIREMENT_KEYS = {
+		floorreq = true, floorrequired = true, requiredfloor = true,
+		requiredtowerfloor = true, towerfloorreq = true,
+		towerfloorrequired = true, towerrequiredfloor = true,
+		neededfloor = true, needfloor = true, targetfloor = true,
+		rebirthfloorreq = true, rebirthrequiredfloor = true,
+	}
+	local REQUIREMENT_WORDS = {"req", "require", "required", "need", "needed", "target", "gate"}
+	local REQUIREMENT_REJECT_WORDS = {"current", "best", "highest", "progress", "reward", "elevator", "start"}
+
+	local function isRequirementKey(normalized)
+		if REQUIREMENT_KEYS[normalized] then return true end
+		if not string.find(normalized, "floor", 1, true) then return false end
+		for _, word in ipairs(REQUIREMENT_REJECT_WORDS) do
+			if string.find(normalized, word, 1, true) then return false end
+		end
+		for _, word in ipairs(REQUIREMENT_WORDS) do
+			if string.find(normalized, word, 1, true) then return true end
+		end
+		return false
+	end
+
+	local function extractRequirementFromTable(value, depth, visited)
+		if type(value) ~= "table" then return nil end
+		depth = depth or 0
+		if depth > 6 then return nil end
+		visited = visited or {}
+		if visited[value] then return nil end
+		visited[value] = true
+		for key, child in pairs(value) do
+			local normalized = normalizeKey(key)
+			if isRequirementKey(normalized) then
+				local floor = validFloor(child)
+				if floor then return floor end
+			end
+		end
+		for key, child in pairs(value) do
+			if type(child) == "table" then
+				local normalized = normalizeKey(key)
+				local likely = string.find(normalized, "rebirth", 1, true)
+					or string.find(normalized, "require", 1, true)
+					or string.find(normalized, "gate", 1, true)
+					or string.find(normalized, "progress", 1, true)
+				if likely then
+					local floor = extractRequirementFromTable(child, depth + 1, visited)
+					if floor then return floor end
+				end
+			end
+		end
+		return nil
+	end
+
+	local function requirementFromData()
+		local floor = extractRequirementFromTable(getClientPath({"rebirth"}))
+		if floor then return floor end
+		local root = getClientPath({})
+		if type(root) == "table" then
+			local branch = root.rebirth or root.Rebirth
+			floor = extractRequirementFromTable(branch)
+			if floor then return floor end
+		end
+		return nil
+	end
+
+	local function requirementFromAttributes()
+		for _, instance in ipairs({player, player.Character}) do
+			if instance then
+				for name, value in pairs(instance:GetAttributes()) do
+					if isRequirementKey(normalizeKey(name)) then
+						local floor = validFloor(value)
+						if floor then return floor end
+					end
+				end
+			end
+		end
+		return nil
+	end
+
+	local function ancestorHasRebirthContext(instance)
+		local current = instance
+		for _ = 1, 8 do
+			if not current then break end
+			if string.find(normalizeKey(current.Name), "rebirth", 1, true) then return true end
+			current = current.Parent
+		end
+		return false
+	end
+
+	local function nearbyHasRebirthTitle(instance)
+		local current = instance
+		for _ = 1, 5 do
+			if not current then break end
+			local checked = 0
+			for _, descendant in ipairs(current:GetDescendants()) do
+				checked = checked + 1
+				if checked > 80 then break end
+				if descendant:IsA("TextLabel") or descendant:IsA("TextButton") then
+					if string.find(string.upper(tostring(descendant.Text or "")), "REBIRTH", 1, true) then
+						return true
+					end
+				end
+			end
+			current = current.Parent
+		end
+		return false
+	end
+
+	local function requirementFromRebirthGui()
+		local fallback = nil
+		for _, object in ipairs(playerGui:GetDescendants()) do
+			if object:IsA("TextLabel") or object:IsA("TextButton") or object:IsA("TextBox") then
+				local a, b = tostring(object.Text or ""):match("(%d+)%s*/%s*(%d+)")
+				if a and b then
+					local currentFloor, requiredFloor = validFloor(a), validFloor(b)
+					if currentFloor and requiredFloor then
+						if ancestorHasRebirthContext(object) then return requiredFloor end
+						if nearbyHasRebirthTitle(object) then fallback = requiredFloor end
+					end
+				end
+			end
+		end
+		return fallback
+	end
+
+	local function isGuiVisible(object)
+		local current = object
+		while current and current ~= playerGui do
+			if current:IsA("GuiObject") and current.Visible == false then
+				return false
+			end
+			if current:IsA("ScreenGui") and current.Enabled == false then
+				return false
+			end
+			current = current.Parent
+		end
+		return true
+	end
+
+	local function hasClickableAncestor(object)
+		local current = object
+
+		for _ = 1, 6 do
+			if not current then
+				break
+			end
+
+			if current:IsA("TextButton")
+				or current:IsA("ImageButton") then
+
+				return true
+			end
+
+			current = current.Parent
+		end
+
+		return false
+	end
+
+	-- Throttle : ce scan fait un playerGui:GetDescendants() complet +
+	-- pattern-matching texte sur chaque TextLabel/TextButton/TextBox.
+	-- Sans throttle, appelé jusqu'à 20x/s (2 loops x 0.1s) => c'est la
+	-- cause la plus probable des frame drops signalés. L'état Rebirth
+	-- UI ne change pas assez vite pour justifier un scan aussi fréquent.
+	local rebirthUiScanCache = nil
+	local rebirthUiScanAt = 0
+	local REBIRTH_UI_SCAN_INTERVAL = 0.4
+
+	local function getRebirthUiState()
+		local now = os.clock()
+
+		if rebirthUiScanCache
+			and now - rebirthUiScanAt < REBIRTH_UI_SCAN_INTERVAL then
+
+			return rebirthUiScanCache
+		end
+
+		local state = {
+			panelVisible = false,
+			needsRoosterHome = false,
+			rebirthReady = false,
+			progressFloor = nil,
+			requiredFloor = nil,
+		}
+
+		for _, object in ipairs(playerGui:GetDescendants()) do
+			if (object:IsA("TextLabel")
+				or object:IsA("TextButton")
+				or object:IsA("TextBox"))
+				and isGuiVisible(object) then
+
+				local content = tostring(object.Text or "")
+				local upper = string.upper(content)
+
+				if string.find(upper, "REBIRTH", 1, true) then
+					state.panelVisible = true
+				end
+
+				if string.find(upper, "RESTING AT HOME", 1, true)
+					or string.find(upper, "BACK TO YOUR COOP", 1, true) then
+					state.panelVisible = true
+					state.needsRoosterHome = true
+				end
+
+				local normalized = string.lower(
+					content:gsub("[^%a]", "")
+				)
+
+				if normalized == "rebirth"
+					and hasClickableAncestor(object) then
+
+					state.panelVisible = true
+					state.rebirthReady = true
+				end
+
+				local left, right =
+					content:match("(%d+)%s*/%s*(%d+)")
+
+				if left and right then
+					local progressFloor = validFloor(left)
+					local requiredFloor = validFloor(right)
+					if progressFloor and requiredFloor
+						and (
+							ancestorHasRebirthContext(object)
+							or nearbyHasRebirthTitle(object)
+						) then
+						state.panelVisible = true
+						state.progressFloor = progressFloor
+						state.requiredFloor = requiredFloor
+					end
+				end
+			end
+		end
+
+		local hasRebirthProgress =
+			state.progressFloor ~= nil
+			and state.requiredFloor ~= nil
+
+		state.rebirthReady =
+			state.rebirthReady
+			and hasRebirthProgress
+			and not state.needsRoosterHome
+
+		rebirthUiScanCache = state
+		rebirthUiScanAt = now
+
+		return state
+	end
+
+	-- Throttle : le scan GUI de secours (requirementFromRebirthGui) fait
+	-- un playerGui:GetDescendants() complet. Sans throttle, cette fonction
+	-- est appelée plusieurs fois par tick (0.1s) par le scheduler, ce qui
+	-- peut spammer ce scan lourd 20-30x/s chez les joueurs où les chemins
+	-- rapides (RebirthAuthority/DataService) échouent silencieusement.
+	local requiredFloorScanAt = 0
+	local REQUIRED_FLOOR_SCAN_INTERVAL = 0.4
+
+	local function detectRequiredRebirthFloor()
+		local now = os.clock()
+
+		if requiredRebirthFloorCache ~= nil
+			and now - requiredFloorScanAt < REQUIRED_FLOOR_SCAN_INTERVAL then
+
+			return requiredRebirthFloorCache
+		end
+
+		requiredFloorScanAt = now
+
+		local floor =
+			requirementFromRebirthBonus()
+			or requirementFromData()
+			or requirementFromAttributes()
+			or requirementFromRebirthGui()
+
+		if floor ~= nil then
+			requiredRebirthFloorCache = floor
+		end
+
+		return floor or requiredRebirthFloorCache
+	end
+
+	local setChickenOrderRemote =
+		Remotes:WaitForChild("SetChickenOrder")
+
+	local function callChickenToCoopOnce()
+		if not setChickenOrderRemote
+			or not setChickenOrderRemote.Parent
+			or not setChickenOrderRemote:IsA("RemoteEvent") then
+
+			return false
+		end
+
+		return pcall(function()
+			setChickenOrderRemote:FireServer("coop")
+		end)
+	end
+
+	automationTab:CreateSection("Automation Cycle")
+
+	automationTab:CreateParagraph({
+		Title = "Automation Runtime",
+		Content = "Required Rebirth Floor uses the game's RebirthBonus.requirementFloor(rebirthCount) formula. Current Tower Floor uses TowerSign/battle-state detection.",
+	})
+
+	automationTab:CreateSlider({
+		Name = "Tower Loop Delay",
+		Range = {1, 200},
+		Increment = 1,
+		CurrentValue = towerLoopDelay,
+		Flag = "AutomationTowerDelay",
+
+		Callback = function(value)
+			towerLoopDelay = value
+		end,
+	})
+
+	automationTab:CreateSlider({
+		Name = "Fight Timeout",
+		Range = {1, 100},
+		Increment = 1,
+		CurrentValue = fightTimeout,
+		Flag = "AutomationFightTimeout",
+
+		Callback = function(value)
+			fightTimeout = math.clamp(
+				math.floor(tonumber(value) or 10),
+				1,
+				100
+			)
+
+			-- Changer le timeout redémarre le timer du floor courant.
+			fightTimeoutFloor = nil
+			fightTimeoutStartedAt = 0
+			lastFightTimeoutSurrenderAt = 0
+		end,
+	})
+
+	local requiredFloorStatus = automationTab:CreateParagraph({
+		Title = "Required Rebirth Floor",
+		Content = "Detecting...",
+	})
+
+	local currentFloorStatus = automationTab:CreateParagraph({
+		Title = "Current Tower Floor",
+		Content = "Waiting...",
+	})
+
+	local towerBestStatus = automationTab:CreateParagraph({
+		Title = "Tower Best",
+		Content = "Detecting...",
+	})
+
+	local fightTimeoutStatus = automationTab:CreateParagraph({
+		Title = "Fight Timeout",
+		Content = "Waiting for Tower",
+	})
+
+	local cycleStatus = automationTab:CreateParagraph({
+		Title = "Cycle Status",
+		Content = "Stopped",
+	})
+
+	local automationFeatureWorkerToken = 0
+	local function invalidateAutomationWorker()
+		automationWorkerToken = automationWorkerToken + 1
+	end
+
+	local function invalidateAutomationFeatureWorkers()
+		automationFeatureWorkerToken = automationFeatureWorkerToken + 1
+	end
+
+	local function forceRoutineCoreOn()
+		-- Les features non liées restent OFF.
+		autoPetEnabled = false
+		autoPetToggle:Set(false)
+		invalidateAutoPetWorker()
+
+		autoEggEnabled = false
+		autoToggle:Set(false)
+		invalidateWorker()
+
+		autoCollectEnabled = false
+		autoCollectToggle:Set(false)
+		invalidateCollectWorker()
+
+		-- Rebirth est possédé par ce runtime dédié.
+		autoRebirthEnabled = true
+		autoRebirthToggle:Set(true)
+		invalidateAutoRebirthWorker()
+
+		-- Workers coop CONTINUS.
+		autoPurchaseFeederEnabled = true
+		autoPurchaseFeederToggle:Set(true)
+		startAutoPurchaseFeederWorker()
+
+		autoBuyFeederEnabled = true
+		autoBuyFeederToggle:Set(true)
+		startAutoBuyFeederWorker()
+
+		autoExpandCoopEnabled = true
+		autoExpandCoopToggle:Set(true)
+		startAutoExpandCoopWorker()
+
+		-- Tower reste géré exclusivement par le scheduler Routine.
+		AutoTowerController:ForceAutomationOn()
+	end
+
+	local function forceRoutineCoreOff()
+		autoRebirthEnabled = false
+		autoRebirthToggle:Set(false)
+		invalidateAutoRebirthWorker()
+
+		autoPurchaseFeederEnabled = false
+		autoPurchaseFeederToggle:Set(false)
+		invalidateAutoPurchaseFeederWorker()
+
+		autoBuyFeederEnabled = false
+		autoBuyFeederToggle:Set(false)
+		invalidateAutoBuyFeederWorker()
+
+		autoExpandCoopEnabled = false
+		autoExpandCoopToggle:Set(false)
+		invalidateAutoExpandCoopWorker()
+
+		AutoTowerController:ForceAutomationOff()
+	end
+
+	local updateFloorStatuses
+	local markRebirthComplete
+
+	local function startAutomationFeatureWorkers()
+		invalidateAutomationFeatureWorkers()
+		local token = automationFeatureWorkerToken
+
+		-- Runtime Rebirth toujours actif dès que Automation tourne.
+		task.spawn(function()
+			local runtimeLastRebirthCount =
+				getRebirthCount()
+
+			local runtimeRequirementBefore =
+				nil
+
+			while automationEnabled
+				and token == automationFeatureWorkerToken
+				and scriptAlive() do
+
+				local now = os.clock()
+
+				local rebirthCount =
+					getRebirthCount()
+
+				local requiredFloor =
+					detectRequiredRebirthFloor()
+
+				local currentFloor =
+					AutoTowerController:GetCurrentFloor()
+
+				local towerBest =
+					getTowerBestFloor()
+
+				local rebirthUi =
+					getRebirthUiState()
+
+				local rebirthRuntimeCoolingDown =
+					now < postRebirthHoldUntil
+
+				if not requiredFloor
+					and rebirthUi.requiredFloor then
+
+					requiredFloor =
+						rebirthUi.requiredFloor
+
+					requiredRebirthFloorCache =
+						requiredFloor
+				end
+
+				if not towerBest
+					and rebirthUi.progressFloor then
+
+					towerBest =
+						rebirthUi.progressFloor
+				end
+
+				updateFloorStatuses(
+					requiredFloor,
+					currentFloor,
+					towerBest
+				)
+
+				if currentFloor ~= fightTimeoutFloor then
+					fightTimeoutFloor = currentFloor
+					fightTimeoutStartedAt = now
+					lastFightTimeoutSurrenderAt = 0
+				end
+
+				if not currentFloor then
+					fightTimeoutStatus:Set({
+						Title = "Fight Timeout",
+						Content = "Waiting for Tower",
+					})
+				elseif not requiredFloor then
+					fightTimeoutStatus:Set({
+						Title = "Fight Timeout",
+						Content = "Waiting for Required Rebirth Floor",
+					})
+				end
+
+				if not currentFloor
+					and not rebirthUi.rebirthReady
+					and (
+						requiredFloor == nil
+						or towerBest == nil
+					) then
+
+					waitingForRebirth = false
+					runtimeRequirementBefore = nil
+					coopStableSince = nil
+					rebirthAttemptedAfterReturn = false
+				end
+
+				if rebirthUi.rebirthReady
+					and now - lastRebirthAttemptAt
+						>= AUTOMATION_REBIRTH_RETRY_DELAY then
+
+					local rebirthOk, rebirthResult =
+						rebirthOnce()
+
+					lastRebirthAttemptAt = now
+					rebirthAttemptedAfterReturn = true
+
+					if rebirthOk
+						and rebirthResult ~= false then
+
+						cycleStatus:Set({
+							Title = "Cycle Status",
+							Content = "REBIRTH button ready · invoking now",
+						})
+					else
+						cycleStatus:Set({
+							Title = "Cycle Status",
+							Content = "REBIRTH ready · retrying...",
+						})
+					end
+				end
+
+				if runtimeLastRebirthCount ~= nil
+					and rebirthCount ~= nil
+					and rebirthCount
+						> runtimeLastRebirthCount then
+
+					runtimeLastRebirthCount =
+						rebirthCount
+
+					markRebirthComplete(now)
+
+					runtimeRequirementBefore =
+						nil
+
+				elseif rebirthCount ~= nil then
+					runtimeLastRebirthCount =
+						rebirthCount
+				end
+
+				-- IN TOWER — dynamique complet :
+				-- A = requiredFloor, B = currentFloor
+				-- B <= A : continue le combat
+				-- B >  A : surrender + retour Coop
+				if not rebirthRuntimeCoolingDown
+					and requiredFloor
+					and currentFloor
+					and currentFloor > requiredFloor then
+
+					if not waitingForRebirth then
+						waitingForRebirth = true
+
+						lastRebirthAttemptAt = 0
+						lastCoopOrderAt = 0
+						coopStableSince = nil
+						rebirthAttemptedAfterReturn = false
+						lastDynamicSurrenderAt = 0
+					end
+
+					if now - lastDynamicSurrenderAt
+						>= AUTOMATION_DYNAMIC_SURRENDER_DELAY then
+
+						AutoTowerController:SurrenderOnce()
+						AutoTowerController:DeclineOnce()
+						callChickenToCoopOnce()
+
+						lastDynamicSurrenderAt = now
+						lastCoopOrderAt = now
+
+						fightTimeoutStatus:Set({
+							Title = "Fight Timeout",
+							Content = "Bypassed · B > A",
+						})
+
+						cycleStatus:Set({
+							Title = "Cycle Status",
+							Content = "B="
+								.. tostring(currentFloor)
+								.. " > A="
+								.. tostring(requiredFloor)
+								.. " · SURRENDER + COOP",
+						})
+					end
+
+				-- FIGHT TIMEOUT : B < A -> timeout par floor
+				elseif not rebirthRuntimeCoolingDown
+					and currentFloor
+					and requiredFloor
+					and currentFloor < requiredFloor then
+
+					local elapsed =
+						math.max(
+							0,
+							now - fightTimeoutStartedAt
+						)
+
+					local remaining =
+						math.max(
+							0,
+							fightTimeout - elapsed
+						)
+
+					if remaining > 0 then
+						fightTimeoutStatus:Set({
+							Title = "Fight Timeout",
+							Content = "Floor "
+								.. tostring(currentFloor)
+								.. " · "
+								.. string.format("%.1f", remaining)
+								.. "s remaining",
+						})
+					else
+						fightTimeoutStatus:Set({
+							Title = "Fight Timeout",
+							Content = "Floor "
+								.. tostring(currentFloor)
+								.. " timed out · RETREAT",
+						})
+
+						if now - lastFightTimeoutSurrenderAt
+							>= AUTOMATION_FIGHT_TIMEOUT_RETRY_DELAY then
+
+							AutoTowerController:SurrenderOnce()
+							AutoTowerController:DeclineOnce()
+
+							lastFightTimeoutSurrenderAt = now
+
+							cycleStatus:Set({
+								Title = "Cycle Status",
+								Content = "Fight Timeout · Floor "
+									.. tostring(currentFloor)
+									.. " → RETREAT",
+							})
+						end
+					end
+
+				elseif not rebirthRuntimeCoolingDown
+					and currentFloor
+					and requiredFloor
+					and currentFloor == requiredFloor then
+
+					fightTimeoutStatus:Set({
+						Title = "Fight Timeout",
+						Content = "Disabled at required floor "
+							.. tostring(requiredFloor),
+					})
+
+				-- OUTSIDE TOWER : éligibilité Rebirth toujours vérifiée.
+				elseif not rebirthRuntimeCoolingDown
+					and not currentFloor
+					and requiredFloor
+					and towerBest
+					and towerBest >= requiredFloor then
+
+					if not waitingForRebirth then
+						waitingForRebirth = true
+
+						runtimeRequirementBefore =
+							requiredFloor
+
+						lastRebirthAttemptAt = 0
+						lastCoopOrderAt = 0
+						coopStableSince = nil
+						rebirthAttemptedAfterReturn = false
+
+						cycleStatus:Set({
+							Title = "Cycle Status",
+							Content = "Rebirth runtime eligible "
+								.. tostring(towerBest)
+								.. " / "
+								.. tostring(requiredFloor),
+						})
+					end
+
+					if now - lastCoopOrderAt
+						>= AUTOMATION_COOP_ORDER_DELAY then
+
+						callChickenToCoopOnce()
+						lastCoopOrderAt = now
+					end
+
+					if rebirthUi.needsRoosterHome then
+						coopStableSince = nil
+
+						cycleStatus:Set({
+							Title = "Cycle Status",
+							Content = "Rebirth ready · rooster not home",
+						})
+					else
+						if not coopStableSince then
+							coopStableSince = now
+						end
+					end
+
+					local stableAtHome =
+						coopStableSince ~= nil
+						and now - coopStableSince >= 1.50
+
+					local homeConfirmed =
+						rebirthUi.rebirthReady
+						or (
+							not rebirthUi.needsRoosterHome
+							and stableAtHome
+						)
+
+					if homeConfirmed
+						and now - lastRebirthAttemptAt
+							>= AUTOMATION_REBIRTH_RETRY_DELAY then
+
+						local rebirthOk, rebirthResult =
+							rebirthOnce()
+
+						lastRebirthAttemptAt = now
+						rebirthAttemptedAfterReturn = true
+
+						if rebirthOk
+							and rebirthResult ~= false then
+
+							cycleStatus:Set({
+								Title = "Cycle Status",
+								Content = "Rebirth sent · confirming...",
+							})
+						else
+							cycleStatus:Set({
+								Title = "Cycle Status",
+								Content = "Rebirth retry...",
+							})
+						end
+					end
+
+					if rebirthAttemptedAfterReturn
+						and runtimeRequirementBefore
+						and requiredFloor
+						and requiredFloor
+							~= runtimeRequirementBefore then
+
+						markRebirthComplete(now)
+						runtimeRequirementBefore = nil
+					end
+
+				else
+					if waitingForRebirth
+						and (
+							not requiredFloor
+							or (
+								towerBest
+								and towerBest < requiredFloor
+							)
+						) then
+
+						waitingForRebirth = false
+						coopStableSince = nil
+						rebirthAttemptedAfterReturn = false
+						runtimeRequirementBefore = nil
+					end
+				end
+
+				task.wait(AUTOMATION_POLL_DELAY)
+			end
+		end)
+	end
+
+	updateFloorStatuses = function(requiredFloor, currentFloor, towerBest)
+		-- Appelé à 0.10s dans DEUX workers (jusqu'à 20x/s) sur 3
+		-- Paragraphs — via setParagraph pour ne pousser un :Set que
+		-- quand la valeur change vraiment (sinon reflow inutile du
+		-- TabPage à chaque frame = micro-freezes pendant l'AutoFarm).
+		setParagraph(requiredFloorStatus, "Required Rebirth Floor",
+			requiredFloor and tostring(requiredFloor) or "Not detected")
+
+		local currentFloorSource =
+			AutoTowerController:GetCurrentFloorSource()
+
+		local currentFloorText =
+			currentFloor
+				and (
+					tostring(currentFloor)
+					.. (
+						currentFloorSource
+							and " · " .. tostring(currentFloorSource)
+							or ""
+					)
+				)
+				or "Not in Tower / unknown"
+
+		setParagraph(currentFloorStatus, "Current Tower Floor", currentFloorText)
+
+		setParagraph(towerBestStatus, "Tower Best",
+			towerBest and tostring(towerBest) or "Not detected")
+	end
+
+	markRebirthComplete = function(now)
+		waitingForRebirth = false
+		requiredRebirthFloorCache = nil
+		postRebirthHoldUntil = now
+		nextTowerStartAt =
+			now + getAutomationTowerLoopDelay()
+		towerLoopCountdownActive = true
+		towerStartPending = false
+		towerStartPendingUntil = 0
+		towerWasActive = false
+		lastRebirthAttemptAt = 0
+		lastCoopOrderAt = 0
+		coopStableSince = nil
+		rebirthAttemptedAfterReturn = false
+		lastDynamicSurrenderAt = 0
+		fightTimeoutFloor = nil
+		fightTimeoutStartedAt = 0
+		lastFightTimeoutSurrenderAt = 0
+
+		fightTimeoutStatus:Set({
+			Title = "Fight Timeout",
+			Content = "Waiting for Tower",
+		})
+
+		cycleStatus:Set({
+			Title = "Cycle Status",
+			Content = "Rebirth complete · Coop reset · rebuilding",
+		})
+	end
+
+	local function startAutomationWorker()
+		invalidateAutomationWorker()
+		local token = automationWorkerToken
+
+		if not automationEnabled then
+			return
+		end
+
+		-- Architecture SINGLE-OWNER : aucun worker générique ne peut
+		-- concurrencer ce scheduler.
+		forceRoutineCoreOn()
+		startAutomationFeatureWorkers()
+
+		local now = os.clock()
+		postRebirthHoldUntil = now
+		nextTowerStartAt = 0
+		towerLoopCountdownActive = false
+		towerStartPending = false
+		towerStartPendingUntil = 0
+		waitingForRebirth = false
+		towerWasActive = false
+		lastRebirthAttemptAt = 0
+		lastCoopOrderAt = 0
+		coopStableSince = nil
+		rebirthAttemptedAfterReturn = false
+		lastDynamicSurrenderAt = 0
+		fightTimeoutFloor = nil
+		fightTimeoutStartedAt = 0
+		lastFightTimeoutSurrenderAt = 0
+
+		fightTimeoutStatus:Set({
+			Title = "Fight Timeout",
+			Content = "Waiting for Tower",
+		})
+
+		cycleStatus:Set({
+			Title = "Cycle Status",
+			Content = "Routine ON · Coop workers looping + Tower scheduler",
+		})
+
+		task.spawn(function()
+			while automationEnabled
+				and token == automationWorkerToken
+				and scriptAlive() do
+
+				local now = os.clock()
+
+				local requiredFloor =
+					detectRequiredRebirthFloor()
+
+				local currentFloor =
+					AutoTowerController:GetCurrentFloor()
+
+				local towerBest =
+					getTowerBestFloor()
+
+				local rebirthUi =
+					getRebirthUiState()
+
+				if not requiredFloor
+					and rebirthUi.requiredFloor then
+
+					requiredFloor =
+						rebirthUi.requiredFloor
+
+					requiredRebirthFloorCache =
+						requiredFloor
+				end
+
+				if not towerBest
+					and rebirthUi.progressFloor then
+
+					towerBest =
+						rebirthUi.progressFloor
+				end
+
+				updateFloorStatuses(
+					requiredFloor,
+					currentFloor,
+					towerBest
+				)
+
+				local inTower =
+					currentFloor ~= nil
+
+				local realRebirthEligibleOutside =
+					not inTower
+					and requiredFloor ~= nil
+					and towerBest ~= nil
+					and towerBest >= requiredFloor
+
+				local towerLoopDelayValue =
+					getAutomationTowerLoopDelay()
+
+				if towerStartPending
+					and inTower then
+
+					towerStartPending = false
+					towerStartPendingUntil = 0
+				end
+
+				if towerWasActive
+					and not inTower then
+
+					AutoTowerController:DeclineOnce()
+					callChickenToCoopOnce()
+
+					towerLoopCountdownActive = true
+					towerStartPending = false
+					towerStartPendingUntil = 0
+					nextTowerStartAt =
+						now + towerLoopDelayValue
+				end
+
+				towerWasActive = inTower
+
+				if not waitingForRebirth
+					and not realRebirthEligibleOutside then
+
+					if inTower then
+						towerLoopCountdownActive = false
+						towerStartPending = false
+						towerStartPendingUntil = 0
+						nextTowerStartAt = 0
+
+						cycleStatus:Set({
+							Title = "Cycle Status",
+							Content = "Waiting to Coop · Tower Loop Delay "
+								.. tostring(towerLoopDelayValue)
+								.. "s",
+						})
+
+					elseif towerStartPending
+						and now < towerStartPendingUntil then
+
+						cycleStatus:Set({
+							Title = "Cycle Status",
+							Content = "TowerStart sent · waiting for Tower",
+						})
+
+					else
+						if towerStartPending
+							and now >= towerStartPendingUntil then
+
+							towerStartPending = false
+							towerStartPendingUntil = 0
+						end
+
+						if not towerLoopCountdownActive then
+							towerLoopCountdownActive = true
+							nextTowerStartAt =
+								now + towerLoopDelayValue
+						end
+
+						local remaining =
+							math.max(
+								0,
+								nextTowerStartAt - now
+							)
+
+						if remaining > 0 then
+							cycleStatus:Set({
+								Title = "Cycle Status",
+								Content = "Tower starts in "
+									.. string.format(
+										"%.1f",
+										remaining
+									)
+									.. "s",
+							})
+						end
+
+						if now >= postRebirthHoldUntil
+							and towerLoopCountdownActive
+							and now >= nextTowerStartAt then
+
+							local latestRequired =
+								detectRequiredRebirthFloor()
+
+							local latestTowerBest =
+								getTowerBestFloor()
+
+							local becameReallyEligible =
+								latestRequired ~= nil
+								and latestTowerBest ~= nil
+								and latestTowerBest >= latestRequired
+
+							if not waitingForRebirth
+								and not becameReallyEligible then
+
+								local started =
+									AutoTowerController:StartOnce()
+
+								if started then
+									towerLoopCountdownActive = false
+									nextTowerStartAt = 0
+									towerStartPending = true
+									towerStartPendingUntil =
+										os.clock() + 5
+
+									cycleStatus:Set({
+										Title = "Cycle Status",
+										Content = "TowerStart sent · waiting for Tower",
+									})
+								else
+									towerLoopCountdownActive = true
+									nextTowerStartAt =
+										os.clock()
+										+ towerLoopDelayValue
+
+									cycleStatus:Set({
+										Title = "Cycle Status",
+										Content = "TowerStart rejected · retry in "
+											.. tostring(towerLoopDelayValue)
+											.. "s",
+									})
+								end
+							end
+						end
+					end
+
+				elseif realRebirthEligibleOutside then
+					towerLoopCountdownActive = false
+					towerStartPending = false
+					towerStartPendingUntil = 0
+					nextTowerStartAt = 0
+
+					cycleStatus:Set({
+						Title = "Cycle Status",
+						Content = "Rebirth eligible · Tower paused",
+					})
+				end
+
+				if AUTOMATION_DEBUG_LOG then
+					local remainingDbg =
+						math.max(0, nextTowerStartAt - now)
+
+					print(
+						("[AutoFarm DEBUG] t=%.1f inTower=%s waitingForRebirth=%s realRebirthEligibleOutside=%s towerStartPending=%s towerLoopCountdownActive=%s remaining=%.1f req=%s cur=%s best=%s")
+						:format(
+							now,
+							tostring(inTower),
+							tostring(waitingForRebirth),
+							tostring(realRebirthEligibleOutside),
+							tostring(towerStartPending),
+							tostring(towerLoopCountdownActive),
+							remainingDbg,
+							tostring(requiredFloor),
+							tostring(currentFloor),
+							tostring(towerBest)
+						)
+					)
+				end
+
+				task.wait(AUTOMATION_POLL_DELAY)
+			end
+		end)
+	end
+
+	local function stopAutomationWorker(shuttingDown)
+		invalidateAutomationWorker()
+		invalidateAutomationFeatureWorkers()
+		waitingForRebirth = false
+		coopStableSince = nil
+		rebirthAttemptedAfterReturn = false
+		lastDynamicSurrenderAt = 0
+		fightTimeoutFloor = nil
+		fightTimeoutStartedAt = 0
+		lastFightTimeoutSurrenderAt = 0
+
+		fightTimeoutStatus:Set({
+			Title = "Fight Timeout",
+			Content = "Stopped",
+		})
+
+		Window.AutomationRunning = false
+
+		if not shuttingDown then
+			forceRoutineCoreOff()
+		end
+
+		cycleStatus:Set({
+			Title = "Cycle Status",
+			Content = shuttingDown and "Closing" or "Stopped",
+		})
+	end
+
+	automationTab:CreateToggle({
+		Name = "Automation",
+		CurrentValue = automationEnabled,
+		Flag = "AutomationEnabled",
+
+		Callback = function(enabled)
+			automationEnabled = enabled
+			AutomationEnabledFlag = enabled
+			Window.AutomationRunning = enabled
+
+			if enabled then
+				startAutomationWorker()
+			else
+				stopAutomationWorker(false)
+			end
+		end,
+	})
+
+	return {
+		StartFromConfig = function()
+			Window.AutomationRunning = automationEnabled == true
+			if automationEnabled then
+				startAutomationWorker()
+			else
+				updateFloorStatuses(
+					detectRequiredRebirthFloor(),
+					AutoTowerController:GetCurrentFloor(),
+					getTowerBestFloor()
+				)
+			end
+		end,
+		Stop = function(shuttingDown)
+			automationEnabled = false
+			stopAutomationWorker(shuttingDown == true)
+		end,
+	}
+end)()
+
+--========================================================
+-- WORLD EVENTS (UFO / Hot Egg / Golden Goose / Chicken Boss)
+--
+-- Le cycle world-event (GameConfig.worldEvents : cycle 600s, warmup 60s,
+-- live 180s) est 100% serveur. Le client apprend l'état via des attributs
+-- sur Workspace (cf. PlayerScripts.UI.2d.event.EventState) :
+--   EventId       -> clé de worldEvents.defs (ufo / hotEgg / goldenGoose / chickenBoss)
+--   EventPhase    -> "idle" | "warmup" | "live"
+--   EventDeadline -> os time (Workspace:GetServerTimeNow()) de fin de phase
+--
+-- L'event UFO en particulier : le vaisseau abduct 4 poulets, MUTE leurs
+-- gènes (bonus de puissance permanent) et les empoisonne temporairement
+-- (poison ~450s) — tout est côté serveur, aucun remote à "claim". Les
+-- oeufs largués par l'UFO sont des NestEgg normaux : l'Auto Collect Egg
+-- (onglet Eggs, option "Collect Any Owner") les ramasse déjà.
+--
+-- Ce panneau est donc informatif : il dit quel event tourne et le temps
+-- restant, pour tous les world events.
+--========================================================
+
+local WorldEventController = (function()
+	local eventStatus = eventsTab:CreateParagraph({
+		Title = "World Event",
+		Content = "Detecting...",
+	})
+
+	eventsTab:CreateParagraph({
+		Title = "About the UFO Invasion",
+		Content = "Server-run: the UFO beams up 4 coop chickens, permanently "
+			.. "mutates their genes (power buff) and briefly poisons them. "
+			.. "Nothing to click. Eggs it drops are normal NestEggs — enable "
+			.. "Eggs > Auto Collect Egg (+ Collect Any Owner) to sweep them.",
+	})
+
+	local function phaseLabel(phase)
+		if phase == "live" then return "LIVE" end
+		if phase == "warmup" then return "warming up" end
+		if phase == "idle" then return "idle" end
+		return tostring(phase or "?")
+	end
+
+	local function tick()
+		local id = workspace:GetAttribute("EventId")
+		local phase = workspace:GetAttribute("EventPhase")
+		local deadline = tonumber(workspace:GetAttribute("EventDeadline"))
+
+		if not id then
+			setParagraph(eventStatus, "World Event", "No world event data")
+			return
+		end
+
+		local name = WORLD_EVENT_NAMES[id] or tostring(id)
+		local content = name .. " · " .. phaseLabel(phase)
+
+		if deadline then
+			local remaining = math.max(0, deadline - workspace:GetServerTimeNow())
+			local mins = math.floor(remaining / 60)
+			local secs = math.floor(remaining % 60)
+			content = content .. " · " .. string.format("%d:%02d", mins, secs)
+				.. (phase == "live" and " left" or " to go")
+		end
+
+		setParagraph(eventStatus, "World Event", content)
+	end
+
+	return {
+		Start = function()
+			task.spawn(function()
+				while scriptAlive() do
+					tick()
+					task.wait(1)
+				end
+			end)
+		end,
+	}
+end)()
+
+--========================================================
+-- INIT
+--========================================================
+
+AutoTowerController:StartFromConfig()
+AutoArenaController:StartFromConfig()
+ChickenManagementController:StartFromConfig()
+Window.AutomationController:StartFromConfig()
+WorldEventController.Start()
